@@ -1,0 +1,14 @@
+{
+  "name": "voltenv",
+  "private": true,
+  "workspaces": [
+    "src-frontend"
+  ],
+  "scripts": {
+    "dev": "bun --cwd src-tauri tauri dev",
+    "build": "bun --cwd src-tauri tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

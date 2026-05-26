@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "identifier": "com.voltenv.app",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run -F voltenv-frontend dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "bun run -F voltenv-frontend generate",
+    "frontendDist": "../src-frontend/.output/public"
   },
   "app": {
     "windows": [

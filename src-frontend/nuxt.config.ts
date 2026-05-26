@@ -22,12 +22,6 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
   ],
 
-  nitro: {
-    output: {
-      publicDir: '../dist'
-    }
-  },
-
   // Path mapping
   srcDir: 'app/',
 })
