@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "identifier": "allow-get-services-status",
+  "description": "Allows getting services status",
+  "commands": ["get_services_status"]
+}
