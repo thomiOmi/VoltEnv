@@ -1,0 +1,12 @@
+node_modules
+dist
+.output
+.nuxt
+.nitro
+.cache
+*.log
+.DS_Store
+
+# Tauri
+src-tauri/target
+src-tauri/gen

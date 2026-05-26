@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "identifier": "allow-stop-service",
+  "description": "Allows stopping a service",
+  "commands": ["stop_service"]
+}
