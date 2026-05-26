@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "identifier": "com.voltenv.app",
   "build": {
-    "beforeDevCommand": "bun run -F voltenv-frontend dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run -F voltenv-frontend generate",
+    "beforeDevCommand": "bun --cwd src-frontend dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "bun --cwd src-frontend generate",
     "frontendDist": "../src-frontend/.output/public"
   },
   "app": {

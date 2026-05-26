@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use directories::ProjectDirs;
 use std::fs;
+use std::path::PathBuf;
 
 /// Modul untuk menangani semua kebutuhan path file di VoltEnv.
 /// Kami menggunakan folder khusus di home directory (~/.voltenv/bin)
@@ -51,6 +51,7 @@ impl VoltPath {
     }
 
     /// Mengecek apakah binary sudah terinstall (didownload)
+    #[allow(dead_code)]
     pub fn is_binary_present(name: &str) -> bool {
         Self::get_binary_path(name).exists()
     }

@@ -50,7 +50,6 @@ impl ProcessManager {
         // Di Windows, tambahkan flag agar tidak muncul jendela console baru
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             command.creation_flags(CREATE_NO_WINDOW);
         }

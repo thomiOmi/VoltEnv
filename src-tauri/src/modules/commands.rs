@@ -1,5 +1,5 @@
 use crate::modules::services::{ProcessManager, ServiceStatus, ServiceInfo};
-use tauri::{State, AppHandle};
+use tauri::State;
 
 #[tauri::command]
 pub async fn get_services_status(

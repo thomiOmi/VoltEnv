@@ -1,6 +1,0 @@
-{
-  "version": 1,
-  "identifier": "allow-start-service",
-  "description": "Allows starting a service",
-  "commands": ["start_service"]
-}
