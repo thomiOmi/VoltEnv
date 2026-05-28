@@ -25,6 +25,15 @@ export default defineNuxtConfig({
       // Tauri requires a consistent port
       strictPort: true,
     },
+    optimizeDeps: {
+      include: [
+        '@tauri-apps/api',
+        '@tauri-apps/plugin-fs',
+        '@tauri-apps/plugin-http',
+        '@tauri-apps/plugin-shell',
+        'jszip',
+      ],
+    },
   },
 
   eslint: {

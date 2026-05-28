@@ -7,6 +7,7 @@ use std::path::PathBuf;
 /// to store binaries on demand.
 pub struct VoltPath;
 
+#[allow(dead_code)]
 impl VoltPath {
     /// Returns the VoltEnv root path (e.g. ~/.voltenv or OS equivalent)
     pub fn root() -> PathBuf {
@@ -20,14 +21,14 @@ impl VoltPath {
             })
     }
 
-    /// Path to the binary directory
+    /// Path to the binary root directory
     pub fn bin_dir() -> PathBuf {
         let mut path = Self::root();
         path.push("bin");
         path
     }
 
-    /// Ensures the binary directory exists, creating it if necessary
+    /// Ensures the binary root directory exists, creating it if necessary
     pub fn ensure_dirs() -> std::io::Result<()> {
         let bin_path = Self::bin_dir();
         if !bin_path.exists() {
@@ -36,23 +37,28 @@ impl VoltPath {
         Ok(())
     }
 
-    /// Returns the full path for a given binary, appending the platform-specific extension
-    pub fn get_binary_path(name: &str) -> PathBuf {
+    /// Returns the versioned service directory: bin/{service_id}/{version}/
+    pub fn service_dir(service_id: &str, version: &str) -> PathBuf {
         let mut path = Self::bin_dir();
-
-        #[cfg(target_os = "windows")]
-        let filename = format!("{}.exe", name);
-
-        #[cfg(not(target_os = "windows"))]
-        let filename = name.to_string();
-
-        path.push(filename);
+        path.push(service_id);
+        path.push(version);
         path
     }
 
-    /// Checks whether a binary is already present on disk
-    #[allow(dead_code)]
-    pub fn is_binary_present(name: &str) -> bool {
-        Self::get_binary_path(name).exists()
+    /// Returns the full path to a service binary within its versioned directory
+    pub fn service_binary_path(service_id: &str, version: &str) -> PathBuf {
+        let mut path = Self::service_dir(service_id, version);
+        #[cfg(target_os = "windows")]
+        path.push(format!("{}.exe", service_id));
+        #[cfg(not(target_os = "windows"))]
+        path.push(service_id.to_string());
+        path
+    }
+
+    /// Path to the temp directory (for downloads, extraction, etc.)
+    pub fn temp_dir() -> PathBuf {
+        let mut path = Self::root();
+        path.push("temp");
+        path
     }
 }

@@ -2,7 +2,7 @@
 const servicesStore = useServicesStore()
 
 onMounted(() => {
-  servicesStore.fetchServicesStatus()
+  servicesStore.init()
 })
 </script>
 
