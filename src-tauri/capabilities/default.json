@@ -16,15 +16,6 @@
         }
       ]
     },
-    "shell:allow-open",
-    "http:default",
-    {
-      "identifier": "fs:default",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$RESOURCE/**" },
-        { "path": "$TEMP/**" }
-      ]
-    }
+    "shell:allow-open"
   ]
 }

@@ -7,7 +7,6 @@ use std::path::PathBuf;
 /// to store binaries on demand.
 pub struct VoltPath;
 
-#[allow(dead_code)]
 impl VoltPath {
     /// Returns the VoltEnv root path (e.g. ~/.voltenv or OS equivalent)
     pub fn root() -> PathBuf {
@@ -56,6 +55,7 @@ impl VoltPath {
     }
 
     /// Path to the temp directory (for downloads, extraction, etc.)
+    #[allow(dead_code)]
     pub fn temp_dir() -> PathBuf {
         let mut path = Self::root();
         path.push("temp");

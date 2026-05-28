@@ -28,10 +28,7 @@ export default defineNuxtConfig({
     optimizeDeps: {
       include: [
         '@tauri-apps/api',
-        '@tauri-apps/plugin-fs',
-        '@tauri-apps/plugin-http',
         '@tauri-apps/plugin-shell',
-        'jszip',
       ],
     },
   },

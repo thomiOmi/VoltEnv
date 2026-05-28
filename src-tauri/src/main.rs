@@ -3,6 +3,7 @@
 
 mod modules;
 use modules::paths::VoltPath;
+use modules::services::ServiceProcesses;
 use tauri::Manager;
 
 fn main() {
@@ -21,8 +22,12 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_http::init())
+        .manage(ServiceProcesses::new())
+        .invoke_handler(tauri::generate_handler![
+            modules::commands::provision_service,
+            modules::commands::start_service,
+            modules::commands::stop_service,
+        ])
         .setup(|app| {
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
