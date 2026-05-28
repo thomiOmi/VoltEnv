@@ -31,7 +31,7 @@ pub async fn start_service(
     id: String,
     process_manager: State<'_, ProcessManager>
 ) -> Result<(), String> {
-    // Contoh argumen default, nantinya bisa diambil dari config
+    // Default args; can be loaded from config later
     let args = match id.as_str() {
         "nginx" => vec!["-c", "conf/nginx.conf"],
         _ => vec![],

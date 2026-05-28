@@ -6,7 +6,8 @@
   ],
   "scripts": {
     "dev": "bun --cwd src-tauri tauri dev",
-    "build": "bun --cwd src-tauri tauri build"
+    "build": "bun --cwd src-tauri tauri build",
+    "generate:icon": "bun --cwd src-tauri tauri icon ../src-frontend/public/app-icon.png"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",

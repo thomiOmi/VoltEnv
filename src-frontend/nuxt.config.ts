@@ -1,17 +1,20 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 // https://v2.tauri.app/start/frontend/nuxt/
 export default defineNuxtConfig({
-  compatibilityDate: '2026-05-26',
+
+  modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxt/eslint', '@vueuse/nuxt'],
+
+  // Enable SSG (Tauri doesn't support server-based solutions)
+  ssr: false,
   devtools: {
-    enabled: true
+    enabled: true,
   },
 
   css: ['~/assets/css/main.css'],
 
-  // Enable SSG (Tauri doesn't support server-based solutions)
-  ssr: false,
-
-  modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxt/eslint', '@vueuse/nuxt'],
+  // Avoids file watcher errors with Tauri's Rust source
+  ignore: ['**/src-tauri/**'],
+  compatibilityDate: '2026-05-26',
 
   vite: {
     // Better support for Tauri CLI output
@@ -24,13 +27,10 @@ export default defineNuxtConfig({
     },
   },
 
-  // Avoids file watcher errors with Tauri's Rust source
-  ignore: ['**/src-tauri/**'],
-
   eslint: {
     config: {
       stylistic: true,
       formatters: true,
-    }
-  }
+    },
+  },
 })

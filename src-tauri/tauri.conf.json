@@ -1,6 +1,7 @@
 {
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "VoltEnv",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "identifier": "com.voltenv.app",
   "build": {
     "beforeDevCommand": "bun --cwd src-frontend dev",
@@ -12,8 +13,11 @@
     "windows": [
       {
         "title": "VoltEnv",
-        "width": 800,
-        "height": 600
+        "center": true,
+        "width": 1200,
+        "height": 600,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {

@@ -2,32 +2,32 @@ use directories::ProjectDirs;
 use std::fs;
 use std::path::PathBuf;
 
-/// Modul untuk menangani semua kebutuhan path file di VoltEnv.
-/// Kami menggunakan folder khusus di home directory (~/.voltenv/bin)
-/// untuk menyimpan binary on-demand.
+/// VoltEnv path management module.
+/// Uses a dedicated folder under the user's local data directory
+/// to store binaries on demand.
 pub struct VoltPath;
 
 impl VoltPath {
-    /// Mengambil path root untuk VoltEnv (biasanya ~/.voltenv atau setara di OS lain)
+    /// Returns the VoltEnv root path (e.g. ~/.voltenv or OS equivalent)
     pub fn root() -> PathBuf {
         ProjectDirs::from("com", "voltenv", "app")
             .map(|proj| proj.data_local_dir().to_path_buf())
             .unwrap_or_else(|| {
-                // Fallback jika ProjectDirs gagal
+                // Fallback if ProjectDirs fails
                 let mut path = dirs::home_dir().unwrap_or_default();
                 path.push(".voltenv");
                 path
             })
     }
 
-    /// Path ke direktori binary (~/.voltenv/bin)
+    /// Path to the binary directory
     pub fn bin_dir() -> PathBuf {
         let mut path = Self::root();
         path.push("bin");
         path
     }
 
-    /// Memastikan folder binary ada, jika tidak maka dibuat
+    /// Ensures the binary directory exists, creating it if necessary
     pub fn ensure_dirs() -> std::io::Result<()> {
         let bin_path = Self::bin_dir();
         if !bin_path.exists() {
@@ -36,7 +36,7 @@ impl VoltPath {
         Ok(())
     }
 
-    /// Mendapatkan path lengkap untuk sebuah binary tertentu dengan ekstensi otomatis
+    /// Returns the full path for a given binary, appending the platform-specific extension
     pub fn get_binary_path(name: &str) -> PathBuf {
         let mut path = Self::bin_dir();
 
@@ -50,7 +50,7 @@ impl VoltPath {
         path
     }
 
-    /// Mengecek apakah binary sudah terinstall (didownload)
+    /// Checks whether a binary is already present on disk
     #[allow(dead_code)]
     pub fn is_binary_present(name: &str) -> bool {
         Self::get_binary_path(name).exists()

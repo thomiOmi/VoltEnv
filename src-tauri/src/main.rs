@@ -8,17 +8,17 @@ use modules::commands::*;
 use tauri::Manager;
 
 fn main() {
-    // Workaround: Tauri CLI v2.11.2 di Windows tidak mengirim TAURI_DEV/TAURI_DEV_URL
-    // ke child process. Set manual agar Tauri tahu ini dev mode.
+    // Workaround: Tauri CLI v2.11.2 on Windows does not forward TAURI_DEV/TAURI_DEV_URL
+    // to child processes. Set manually so Tauri knows this is dev mode.
     #[cfg(debug_assertions)]
     {
         std::env::set_var("TAURI_DEV", "1");
         std::env::set_var("TAURI_DEV_URL", "http://localhost:3000");
     }
 
-    // Pastikan folder data tersedia saat startup
+    // Ensure data directories exist at startup
     if let Err(e) = VoltPath::ensure_dirs() {
-        eprintln!("[voltenv] Gagal menginisialisasi direktori VoltEnv: {}", e);
+        eprintln!("[voltenv] Failed to initialize VoltEnv directories: {}", e);
     }
 
     tauri::Builder::default()
