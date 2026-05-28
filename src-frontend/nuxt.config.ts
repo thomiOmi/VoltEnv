@@ -1,26 +1,17 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+// https://v2.tauri.app/start/frontend/nuxt/
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-26',
+  devtools: {
+    enabled: true
+  },
 
-  // Tauri v2 + Nuxt integration
-  // https://v2.tauri.app/start/frontend/nuxt/
+  css: ['~/assets/css/main.css'],
 
   // Enable SSG (Tauri doesn't support server-based solutions)
   ssr: false,
 
-  modules: [
-    '@nuxt/ui',
-    '@pinia/nuxt',
-  ],
-
-  // Enables the development server to be discoverable by WebView2
-  // on Windows (default listens on IPv6 ::1 only)
-  devServer: {
-    host: '0.0.0.0',
-  },
-
-  // Path mapping
-  srcDir: 'app/',
+  modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxt/eslint', '@vueuse/nuxt'],
 
   vite: {
     // Better support for Tauri CLI output
@@ -31,12 +22,15 @@ export default defineNuxtConfig({
       // Tauri requires a consistent port
       strictPort: true,
     },
-    optimizeDeps: {
-      // Prevent 504 (Outdated Optimize Dep) on Windows + Bun
-      exclude: ['@iconify/vue'],
-    },
   },
 
   // Avoids file watcher errors with Tauri's Rust source
   ignore: ['**/src-tauri/**'],
+
+  eslint: {
+    config: {
+      stylistic: true,
+      formatters: true,
+    }
+  }
 })
