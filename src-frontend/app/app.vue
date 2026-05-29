@@ -1,8 +1,10 @@
 <script setup lang="ts">
 const servicesStore = useServicesStore()
+const logManagerStore = useLogManagerStore()
 
 onMounted(() => {
   servicesStore.init()
+  logManagerStore.initLogListener()
 })
 </script>
 
@@ -118,10 +120,24 @@ onMounted(() => {
                   <span class="text-slate-500">Port</span>
                   <span class="text-slate-300 font-mono">{{ service.port }}</span>
                 </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-500">Version</span>
+                  <span class="text-slate-300 font-mono flex items-center gap-1.5">
+                    {{ service.version }}
+                    <span
+                      v-if="servicesStore.isActiveVersion(service.id, service.version)"
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold
+                             bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                    >
+                      Active OS Version
+                    </span>
+                  </span>
+                </div>
               </div>
 
-              <!-- Footer -->
-              <div class="px-4 pb-4 pt-1">
+              <!-- Footer actions -->
+              <div class="px-4 pb-4 pt-1 flex flex-col gap-2">
+                <!-- Start / Stop -->
                 <UButton
                   v-if="service.status === 'Stopped'"
                   color="success"
@@ -144,14 +160,53 @@ onMounted(() => {
                 >
                   Stop
                 </UButton>
+
+                <!-- Version switch (only for services with multiple versions) -->
+                <template v-if="service.status !== 'Running'">
+                  <div
+                    v-for="ver in servicesStore.versionsFor(service.id).filter(v => v !== service.version)"
+                    :key="ver"
+                    class="flex items-center justify-between px-3 py-1.5 rounded-md bg-slate-800/30 border border-slate-700/50"
+                  >
+                    <span class="text-xs font-mono text-slate-400">{{ ver }}</span>
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-arrow-left-right"
+                      :loading="servicesStore.switchingVersions[service.id]"
+                      @click="servicesStore.switchServiceVersion(service.id, ver)"
+                    >
+                      Switch
+                    </UButton>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- Service Logs -->
+      <div class="mt-8 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Service Logs
+          </h2>
+          <span class="text-xs text-slate-500">Real-time output from running services</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <LogConsole
+            v-for="service in servicesStore.services"
+            :key="service.id"
+            :service-id="service.id"
+            :version="service.version"
+          />
+        </div>
+      </div>
+
       <!-- Footer -->
-      <footer class="mt-16 pt-6 border-t border-slate-800 text-center">
+      <footer class="mt-12 pt-6 border-t border-slate-800 text-center">
         <p class="text-xs text-slate-600">
           VoltEnv v0.1.0 &mdash; Blazing Fast Local Development Environment
         </p>

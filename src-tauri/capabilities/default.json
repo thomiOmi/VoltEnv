@@ -1,21 +1,38 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default permissions for VoltEnv",
-  "windows": ["main"],
+  "description": "Default permissions for VoltEnv production plugins",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "shell:default",
     {
-      "identifier": "shell:allow-execute",
+      "identifier": "fs:default",
       "allow": [
         {
-          "name": "binaries",
-          "cmd": "*",
-          "args": true
+          "path": "$APPDATA/**"
+        },
+        {
+          "path": "$RESOURCE/**"
+        },
+        {
+          "path": "$TEMP/**"
         }
       ]
     },
-    "shell:allow-open"
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        {
+          "url": "https://*"
+        }
+      ]
+    },
+    "os:default",
+    "log:default",
+    "store:default"
   ]
 }

@@ -10,14 +10,26 @@ tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 tauri = { version = "2.0", features = [] }
-tauri-plugin-shell = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-directories = "6.0"
-dirs = "6.0"
-reqwest = "0.12"
+reqwest = { version = "0.12", features = ["stream"] }
 zip = "2"
+futures-util = "0.3"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["now"] }
+winreg = "0.52"
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+junction = "1.2.0"
+
+# --- TAURI v2 PLUGIN ECOSYSTEM ---
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-os = "2"
+tauri-plugin-log = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-store = "2"
 
 [features]
 default = ["custom-protocol"]

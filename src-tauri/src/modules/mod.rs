@@ -1,3 +1,10 @@
+pub mod backup;
+pub mod catalog;
 pub mod commands;
+pub mod download;
+pub mod env;
+pub mod installer;
+pub mod logger;
 pub mod paths;
+pub mod platform;
 pub mod services;
