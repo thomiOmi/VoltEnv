@@ -46,5 +46,7 @@
   ],
   "tailwindCSS.classFunctions": [
     "defineAppConfig"
-  ]
+  ],
+  "nuxtr.defaultPackageManager": "Bun",
+  "nuxtr.monorepoMode.DirectoryName": "./src-frontend"
 }
