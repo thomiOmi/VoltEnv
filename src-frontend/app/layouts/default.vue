@@ -8,6 +8,11 @@ const links = [[{
   icon: 'i-lucide-server',
   to: '/',
   onSelect: () => { open.value = false },
+}, {
+  label: 'Settings',
+  icon: 'i-lucide-settings',
+  to: '/settings',
+  onSelect: () => { open.value = false },
 }], [{
   label: 'Source',
   icon: 'i-simple-icons-github',

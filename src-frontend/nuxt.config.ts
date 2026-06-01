@@ -34,7 +34,6 @@ export default defineNuxtConfig({
         '@tauri-apps/plugin-http',
         '@tauri-apps/plugin-shell',
         '@tauri-apps/plugin-upload',
-        'jszip', // CJS
       ],
     },
   },

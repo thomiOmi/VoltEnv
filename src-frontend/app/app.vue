@@ -25,11 +25,13 @@ useSeoMeta({
 })
 
 const servicesStore = useServicesStore()
-const logManagerStore = useLogManagerStore()
 
 onMounted(() => {
   servicesStore.init()
-  logManagerStore.initLogListener()
+})
+
+onUnmounted(() => {
+  servicesStore.disposeListeners()
 })
 </script>
 

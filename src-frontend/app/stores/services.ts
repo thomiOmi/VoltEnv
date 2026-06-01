@@ -1,58 +1,11 @@
 import { defineStore } from 'pinia'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-
-interface ServiceInfo {
-  id: string
-  name: string
-  port: number
-  version: string
-  versions?: string[]
-  downloadUrl: string
-  sha256?: string
-  pgpSignatureUrl?: string
-}
-
-const SERVICE_INFO: Record<string, ServiceInfo> = {
-  nginx: {
-    id: 'nginx',
-    name: 'Nginx',
-    port: 80,
-    version: 'nginx-1.26.2',
-    versions: ['nginx-1.26.2'],
-    downloadUrl: 'https://nginx.org/download/nginx-1.26.2.zip',
-    pgpSignatureUrl: 'https://nginx.org/download/nginx-1.26.2.zip.asc',
-  },
-  php: { id: 'php', name: 'PHP-CGI', port: 9000, version: 'unknown', downloadUrl: '' },
-  mysql: { id: 'mysql', name: 'MySQL', port: 3306, version: 'unknown', downloadUrl: '' },
-  redis: {
-    id: 'redis',
-    name: 'Redis',
-    port: 6379,
-    version: 'redis-7.2.14',
-    versions: ['redis-7.2.14', 'redis-7.0.15'],
-    downloadUrl: '',
-    sha256: 'B31D0F867608017F0B0962624D55A4C569A745587AD4B08F7FE9EEA59D6916C1',
-  },
-}
-
-export interface Service {
-  id: string
-  name: string
-  version: string
-  status: 'Running' | 'Stopped' | 'Starting' | { Error: string }
-  port: number
-}
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type { ServiceStatusChangedPayload } from '#shared/types/events'
 
 export const useServicesStore = defineStore('services', {
   state: () => ({
-    services: Object.values(SERVICE_INFO).map(s => ({
-      id: s.id,
-      name: s.name,
-      version: s.version,
-      status: 'Stopped' as Service['status'],
-      port: s.port,
-    })),
+    services: [] as Service[],
+    catalog: [] as ServiceInfo[],
     loadingStates: {} as Record<string, boolean>,
     downloadProgress: {} as Record<string, number>,
     installProgress: {} as Record<string, number>,
@@ -60,6 +13,7 @@ export const useServicesStore = defineStore('services', {
     portError: null as string | null,
     activeVersions: {} as Record<string, string>,
     switchingVersions: {} as Record<string, boolean>,
+    _unlistenStatus: null as UnlistenFn | null,
   }),
 
   getters: {
@@ -68,42 +22,77 @@ export const useServicesStore = defineStore('services', {
         return state.activeVersions[id] === version
       }
     },
-    versionsFor: () => {
+    versionsFor: (state) => {
       return (id: string): string[] => {
-        return SERVICE_INFO[id]?.versions ?? []
+        return state.catalog.find(s => s.id === id)?.versions ?? []
       }
     },
   },
 
   actions: {
     async init() {
-      listen<{ id: string, progress: number }>('download-progress', (event) => {
-        const { id, progress } = event.payload
-        this.serviceStep = { ...this.serviceStep, [id]: 'downloading' }
-        this.downloadProgress = { ...this.downloadProgress, [id]: progress }
-      })
+      await this.fetchServicesStatus()
 
-      listen<{ id: string, progress: number }>('install-progress', (event) => {
-        const { id, progress } = event.payload
-        this.serviceStep = { ...this.serviceStep, [id]: 'installing' }
-        this.installProgress = { ...this.installProgress, [id]: progress }
-        if (progress >= 100) {
-          this.serviceStep = { ...this.serviceStep, [id]: 'ready' }
-        }
+      listen<ServiceStatusChangedPayload>('service-status-changed', async () => {
+        await this.fetchServicesStatus()
+      }).then((unlisten) => {
+        this._unlistenStatus = unlisten
       })
+    },
 
-      listen<{ id: string, status: string }>('service-status-changed', (event) => {
-        const { id, status } = event.payload
-        this._updateStatus(id, status as Service['status'])
-      })
+    disposeListeners() {
+      this._unlistenStatus?.()
+      this._unlistenStatus = null
+    },
 
+    /// Unified re-sync with the filesystem.
+    ///
+    /// 1. Re-fetches the catalog — the backend calls
+    ///    `catalog::scan_installed_versions` which scans `bin/` on disk,
+    ///    making the filesystem the single source of truth for
+    ///    `installedVersions` and purging any stale active version from
+    ///    the in-memory cache.
+    /// 2. Rebuilds the entire `services` array from the fresh catalog so
+    ///    stale service objects (orphaned after manual directory deletion)
+    ///    are automatically removed.
+    /// 3. Refreshes the OS PATH active-versions map.
+    async fetchServicesStatus() {
+      const api = useServiceApi()
+      this.catalog = await api.getServices()
+      this.services = await Promise.all(
+        this.catalog.map(svc => api.getServiceStatus(svc.id)),
+      )
       await this.fetchActiveVersions()
     },
 
-    async fetchActiveVersions() {
+    /// Downloads a custom template manifest for a service.
+    /// Each asset in the manifest is downloaded, verified, and extracted
+    /// under `$ROOT/bin/{id}/`.
+    async downloadTemplates(id: string, manifest: DownloadManifest) {
+      const api = useServiceApi()
+      this.loadingStates = { ...this.loadingStates, [id]: true }
+      const log = useLogManagerStore()
+      log.pushLog(id, '', 'Downloading template assets…', false)
+
       try {
-        const versions = await invoke<Record<string, string>>('get_active_versions')
-        this.activeVersions = versions
+        await api.downloadTemplateService(id, manifest)
+        await this.fetchServicesStatus()
+        log.pushLog(id, '', 'Templates downloaded successfully', false)
+      }
+      catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        log.pushLog(id, '', `Template download failed: ${msg}`, true)
+        console.error(`Failed to download templates for ${id}`, error)
+      }
+      finally {
+        this.loadingStates = { ...this.loadingStates, [id]: false }
+      }
+    },
+
+    async fetchActiveVersions() {
+      const api = useServiceApi()
+      try {
+        this.activeVersions = await api.getActiveVersions()
       }
       catch (e) {
         console.error('Failed to fetch active versions', e)
@@ -111,13 +100,14 @@ export const useServicesStore = defineStore('services', {
     },
 
     async switchServiceVersion(id: string, version: string) {
+      const api = useServiceApi()
       this.switchingVersions = { ...this.switchingVersions, [id]: true }
 
       const log = useLogManagerStore()
-      log.pushLog(id, version, `Switching to version ${version}\u2026`, false)
+      log.pushLog(id, version, `Switching to version ${version}…`, false)
 
       try {
-        await invoke('switch_service_version', { id, version })
+        await api.switchServiceVersion(id, version)
         this.activeVersions = { ...this.activeVersions, [id]: version }
         log.pushLog(id, version, `Active version switched to ${version}`, false)
       }
@@ -139,40 +129,90 @@ export const useServicesStore = defineStore('services', {
       }
     },
 
-    async startService(id: string) {
-      const info = SERVICE_INFO[id]
+    /// First-time setup: download + install + register to OS PATH.
+    /// Does NOT start the service — use `startService` for that.
+    async provisionService(id: string, version: string) {
+      const api = useServiceApi()
+      const info = this.catalog.find(s => s.id === id)
       if (!info) return
 
       this.loadingStates = { ...this.loadingStates, [id]: true }
       this._updateStatus(id, 'Starting')
 
       const log = useLogManagerStore()
-      log.pushLog(id, info.version, 'Starting service\u2026', false)
+      log.pushLog(id, version, 'Provisioning service…', false)
 
       try {
-        const available = await invoke<boolean>('is_port_available', { port: info.port })
-        if (!available) {
-          this.portError = `Port ${info.port} (${info.name}) is already in use. Please free the port and try again.`
-          log.pushLog(id, info.version, `Port ${info.port} is already in use`, true)
+        if (!info.downloadUrl) {
+          log.pushLog(id, version, 'No download URL configured — cannot provision', true)
           this._updateStatus(id, 'Stopped')
           return
         }
 
-        this.portError = null
+        await api.downloadService(id, version)
+        await api.installService(id, version)
+        await api.registerToOsEnv()
+        await api.registerServiceEnvironment(id, version)
+        this.activeVersions = { ...this.activeVersions, [id]: version }
 
-        // download_service resolves URL from the catalog's url_template
-        await invoke('download_service', { id, version: info.version })
-        await invoke('install_service', { id, version: info.version })
-        await invoke('register_to_os_env')
-        await invoke('register_service_environment', { id, version: info.version })
-        this.activeVersions = { ...this.activeVersions, [id]: info.version }
-        await invoke('start_service', { id, version: info.version })
-        log.pushLog(id, info.version, 'Service started', false)
-        this._updateStatus(id, 'Running')
+        // Full re-sync — backend re-scans disk, frontend gets fresh
+        // catalog (installedVersions) and statuses.
+        await this.fetchServicesStatus()
+
+        log.pushLog(id, version, 'Service provisioned successfully', false)
+        this._updateStatus(id, 'Stopped')
       }
       catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        log.pushLog(id, info.version, `Failed: ${msg}`, true)
+        log.pushLog(id, version, `Provisioning failed: ${msg}`, true)
+        console.error(`Failed to provision service ${id}`, error)
+        this._updateStatus(id, 'Stopped')
+      }
+      finally {
+        this.loadingStates = { ...this.loadingStates, [id]: false }
+      }
+    },
+
+    /// Starts an already-provisioned service. Binary must exist on disk.
+    async startService(id: string) {
+      const api = useServiceApi()
+      const info = this.catalog.find(s => s.id === id)
+      if (!info) return
+
+      const hasInstall = (info.installedVersions?.length ?? 0) > 0
+      if (!hasInstall) {
+        const log = useLogManagerStore()
+        log.pushLog(id, info.version, 'Service not installed — use Setup first', true)
+        return
+      }
+
+      const active = await api.getActiveVersions()
+      const ver = active[id] ?? info.version
+
+      this.loadingStates = { ...this.loadingStates, [id]: true }
+      this._updateStatus(id, 'Starting')
+
+      const log = useLogManagerStore()
+      log.pushLog(id, ver, 'Starting service…', false)
+
+      try {
+        if (info.port > 0) {
+          const available = await api.isPortAvailable(info.port)
+          if (!available) {
+            this.portError = `Port ${info.port} (${info.name}) is already in use. Please free the port and try again.`
+            log.pushLog(id, ver, `Port ${info.port} is already in use`, true)
+            this._updateStatus(id, 'Stopped')
+            return
+          }
+          this.portError = null
+        }
+
+        await api.startService(id, ver)
+        log.pushLog(id, ver, 'Service started', false)
+      }
+      catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        log.pushLog(id, ver, `Failed: ${msg}`, true)
         console.error(`Failed to start service ${id}`, error)
         this._updateStatus(id, 'Stopped')
       }
@@ -182,18 +222,18 @@ export const useServicesStore = defineStore('services', {
     },
 
     async stopService(id: string) {
-      const info = SERVICE_INFO[id]
+      const api = useServiceApi()
+      const info = this.catalog.find(s => s.id === id)
       if (!info) return
 
       this.loadingStates = { ...this.loadingStates, [id]: true }
 
       const log = useLogManagerStore()
-      log.pushLog(id, info.version, 'Stopping service\u2026', false)
+      log.pushLog(id, info.version, 'Stopping service…', false)
 
       try {
-        await invoke('stop_service', { id, version: info.version })
-        await invoke('unregister_service_environment', { id })
-        this._updateStatus(id, 'Stopped')
+        await api.stopService(id)
+        await api.unregisterServiceEnvironment(id)
       }
       catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
@@ -206,8 +246,9 @@ export const useServicesStore = defineStore('services', {
     },
 
     async softStopService(id: string) {
+      const api = useServiceApi()
       try {
-        await invoke('soft_stop_service', { id, version: SERVICE_INFO[id]?.version })
+        await api.softStopService(id)
       }
       catch (error) {
         console.error(`Failed to soft-stop service ${id}`, error)
@@ -215,17 +256,17 @@ export const useServicesStore = defineStore('services', {
     },
 
     async forceStopService(id: string) {
-      const info = SERVICE_INFO[id]
+      const api = useServiceApi()
+      const info = this.catalog.find(s => s.id === id)
       if (!info) return
 
       this.loadingStates = { ...this.loadingStates, [id]: true }
 
       const log = useLogManagerStore()
-      log.pushLog(id, info.version, 'Force-stopping service\u2026', false)
+      log.pushLog(id, info.version, 'Force-stopping service…', false)
 
       try {
-        await invoke('force_stop_service', { id, version: info.version })
-        this._updateStatus(id, 'Stopped')
+        await api.forceStopService(id)
       }
       catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
@@ -237,8 +278,5 @@ export const useServicesStore = defineStore('services', {
       }
     },
 
-    async fetchServicesStatus() {
-      // Status is managed reactively by events from Rust.
-    },
   },
 })

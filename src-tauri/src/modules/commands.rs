@@ -1,6 +1,10 @@
+use crate::modules::catalog::models::{
+    ServiceInfoResponse, ServiceStatusResponse, ServiceStatusValue,
+};
 use crate::modules::catalog::CatalogManager;
 use crate::modules::download::DownloadManager;
 use crate::modules::download::Verifier;
+use crate::modules::download::{process_download_manifest, DownloadManifest};
 use crate::modules::installer::InstallerManager;
 use crate::modules::paths::VoltPath;
 use crate::modules::services::{KillStrategy, ServiceProcesses};
@@ -89,6 +93,28 @@ pub async fn download_service(
     }
 
     Ok(())
+}
+
+/// Downloads and provisions a set of template assets for a service from a
+/// `DownloadManifest`.
+///
+/// Each asset in the manifest goes through the full pipeline:
+///   download → SHA‑256 (optional) → PGP (optional) → extract / place
+/// under `$ROOT/bin/{id}/`.  On any failure the operation aborts
+/// immediately, temporary files are cleaned up, and an error is returned.
+#[tauri::command]
+pub async fn download_template_service(
+    app: AppHandle,
+    id: String,
+    manifest: DownloadManifest,
+) -> Result<(), String> {
+    let target_root = VoltPath::bin_dir(&app).join(&id);
+
+    tokio::fs::create_dir_all(&target_root)
+        .await
+        .map_err(|e| format!("Failed to create target directory: {}", e))?;
+
+    process_download_manifest(&app, &id, manifest, &target_root).await
 }
 
 /// Extracts a previously downloaded zip archive into the service's
@@ -197,6 +223,87 @@ pub fn get_active_versions(catalog: State<'_, CatalogManager>) -> HashMap<String
     catalog.all_active_versions()
 }
 
+/// Returns the full service catalog as `ServiceInfo[]`.  One entry per
+/// unique service ID with all available versions collected and URL
+/// templates resolved against the primary version.
+///
+/// Re-scans `bin/` before returning so `installedVersions` always reflects
+/// the actual filesystem state — not just the last startup scan.
+#[tauri::command]
+pub fn get_catalog(app: AppHandle, catalog: State<'_, CatalogManager>) -> Vec<ServiceInfoResponse> {
+    catalog.scan_installed_versions(&app);
+    catalog.get_catalog()
+}
+
+/// Returns the current runtime status of a single service as `Service`.
+///
+/// Combines metadata from the catalog (`name`, `port`) with the running
+/// state from `ServiceProcesses` and filesystem scan data to determine
+/// the true installed version — never trusts the in-memory cache alone.
+///
+/// Resolution priority (first match wins):
+/// 1. Active cache version whose binary dir exists on disk
+/// 2. Any catalog version whose binary dir exists on disk
+/// 3. Catalog default version (reported as "not installed")
+#[tauri::command]
+pub fn get_service_status(
+    app: AppHandle,
+    catalog: State<'_, CatalogManager>,
+    processes: State<'_, ServiceProcesses>,
+    id: String,
+) -> Result<ServiceStatusResponse, String> {
+    let primary = catalog
+        .by_id(&id)
+        .ok_or_else(|| format!("Unknown service: {}", id))?;
+
+    let running = processes.is_any_version_running(&id)?;
+    let installed = catalog.installed_versions_for(&id);
+
+    let version = resolve_service_version(&app, &catalog, &id, &installed);
+
+    Ok(ServiceStatusResponse {
+        id: id.clone(),
+        name: primary.display_name(),
+        version,
+        status: if running {
+            ServiceStatusValue::Running
+        } else {
+            ServiceStatusValue::Stopped
+        },
+        port: primary.port,
+    })
+}
+
+/// Resolves the best version string to report for a service, using
+/// filesystem truth as the source of authority.
+fn resolve_service_version(
+    app: &AppHandle,
+    catalog: &CatalogManager,
+    id: &str,
+    installed: &[String],
+) -> String {
+    // 1. Active cache version — verify it's still on disk
+    let cached = catalog.all_active_versions().get(id).cloned();
+    if let Some(ref v) = cached {
+        if VoltPath::service_dir(app, id, v).exists() {
+            return v.clone();
+        }
+        // Stale cache: clean it up
+        let _ = catalog.remove_active_version(app, id);
+    }
+
+    // 2. First catalog version that exists on disk
+    for v in catalog.all_versions_by_id(id) {
+        if installed.contains(&v.version) {
+            return v.version.clone();
+        }
+    }
+
+    // 3. No version installed on disk — return empty string to signal
+    //    "not installed" to the frontend
+    String::new()
+}
+
 // Lifecycle: start / hybrid stop / soft stop / force stop
 
 /// Starts a service: spawns the binary with catalog-configured arguments,
@@ -224,54 +331,33 @@ pub async fn start_service(
         .await
 }
 
-/// Hybrid stop: service-specific graceful shutdown (phase 1), then
-/// soft‑kill with a 3 s grace window (phase 2), and finally force‑kill
-/// the entire process tree (phase 3).
+/// Hybrid stop: service-specific graceful shutdown, then
+/// soft‑kill with a 3 s grace window, and finally force‑kill
+/// the entire process tree.
+///
+/// Stops **all** running instances of a service identified by `id`,
+/// regardless of version.
 #[tauri::command]
-pub async fn stop_service(
-    app: AppHandle,
-    catalog: State<'_, CatalogManager>,
-    state: State<'_, ServiceProcesses>,
-    id: String,
-    version: String,
-) -> Result<(), String> {
-    let def = catalog
-        .by_id_and_version(&id, &version)
-        .ok_or_else(|| format!("Unknown service version: {} {}", id, version))?;
-
-    if !def.stop_args.is_empty() {
-        let (bin_path, cwd) = VoltPath::resolve_service_paths(&app, &id, &version);
-        let args: Vec<&str> = def.stop_args.iter().map(|s| s.as_str()).collect();
-
-        let mut cmd = tokio::process::Command::new(&bin_path);
-        cmd.args(&args).current_dir(&cwd);
-
-        // Inject the isolated VoltEnv PATH so the stop binary can find its
-        // runtime dependencies.
-        crate::modules::env::prepare_command_env(&mut cmd, &app);
-
-        let _ = cmd.spawn();
-    }
-
-    state.stop(&id, &version, KillStrategy::Hybrid).await
+pub async fn stop_service(state: State<'_, ServiceProcesses>, id: String) -> Result<(), String> {
+    state.stop_all_by_id(&id, KillStrategy::Hybrid).await
 }
 
-/// Sends a soft termination signal (SIGTERM / `taskkill /PID`).
+/// Sends a soft termination signal (SIGTERM / `taskkill /PID`)
+/// to **all** running instances of a service.
 #[tauri::command]
 pub async fn soft_stop_service(
     state: State<'_, ServiceProcesses>,
     id: String,
-    version: String,
 ) -> Result<(), String> {
-    state.stop(&id, &version, KillStrategy::Soft).await
+    state.stop_all_by_id(&id, KillStrategy::Soft).await
 }
 
-/// Immediately terminates the entire process tree (SIGKILL / `taskkill /F /T`).
+/// Immediately terminates the entire process tree (SIGKILL / `taskkill /F /T`)
+/// for **all** running instances of a service.
 #[tauri::command]
 pub async fn force_stop_service(
     state: State<'_, ServiceProcesses>,
     id: String,
-    version: String,
 ) -> Result<(), String> {
-    state.stop(&id, &version, KillStrategy::Force).await
+    state.stop_all_by_id(&id, KillStrategy::Force).await
 }

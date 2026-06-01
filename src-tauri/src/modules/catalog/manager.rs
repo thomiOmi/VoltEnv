@@ -1,4 +1,5 @@
-use crate::modules::catalog::models::ServiceConfig;
+use crate::modules::catalog::models::{ServiceConfig, ServiceInfoResponse};
+use crate::modules::paths::VoltPath;
 use std::collections::HashMap;
 use std::fs;
 use std::sync::RwLock;
@@ -15,6 +16,10 @@ use tauri::Manager;
 pub struct CatalogManager {
     services: Vec<ServiceConfig>,
     active_versions: RwLock<HashMap<String, String>>,
+    /// Cache of which versions are actually installed on disk.
+    /// Key: `service_id`, Value: list of version directories found under `bin/{service_id}/`.
+    /// Populated by `scan_installed_versions` at startup.
+    installed_versions: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl CatalogManager {
@@ -42,6 +47,8 @@ impl CatalogManager {
         vec![
             ServiceConfig {
                 id: "nginx".into(),
+                name: "Nginx".into(),
+                port: 80,
                 version: "nginx-1.26.2".into(),
                 start_args: vec!["-c".into(), "conf/nginx.conf".into()],
                 stop_args: vec!["-s".into(), "stop".into()],
@@ -53,6 +60,8 @@ impl CatalogManager {
             },
             ServiceConfig {
                 id: "php".into(),
+                name: "PHP-CGI".into(),
+                port: 9000,
                 version: "unknown".into(),
                 start_args: vec![],
                 stop_args: vec![],
@@ -62,6 +71,8 @@ impl CatalogManager {
             },
             ServiceConfig {
                 id: "mysql".into(),
+                name: "MySQL".into(),
+                port: 3306,
                 version: "unknown".into(),
                 start_args: vec![],
                 stop_args: vec![],
@@ -71,6 +82,8 @@ impl CatalogManager {
             },
             ServiceConfig {
                 id: "redis".into(),
+                name: "Redis".into(),
+                port: 6379,
                 version: "redis-7.2.14".into(),
                 start_args: vec!["--port".into(), "6379".into()],
                 stop_args: vec![],
@@ -82,6 +95,8 @@ impl CatalogManager {
             },
             ServiceConfig {
                 id: "redis".into(),
+                name: "Redis".into(),
+                port: 6379,
                 version: "redis-7.0.15".into(),
                 start_args: vec!["--port".into(), "6379".into()],
                 stop_args: vec![],
@@ -163,10 +178,16 @@ impl CatalogManager {
         // Load persisted active versions into in-memory cache
         let versions = Self::load_current_versions(app);
 
-        Ok(Self {
+        let manager = Self {
             services,
             active_versions: RwLock::new(versions),
-        })
+            installed_versions: RwLock::new(HashMap::new()),
+        };
+
+        // Scan bin/ for what is actually installed on disk
+        manager.scan_installed_versions(app);
+
+        Ok(manager)
     }
 
     /// Returns the catalog entry for `id`, or `None` if not found.
@@ -200,6 +221,7 @@ impl CatalogManager {
         Self {
             services: Vec::new(),
             active_versions: RwLock::new(HashMap::new()),
+            installed_versions: RwLock::new(HashMap::new()),
         }
     }
 
@@ -292,6 +314,28 @@ impl CatalogManager {
         Self::save_current_versions(app, &snapshot)
     }
 
+    /// Removes the active version entry for `service_id` from the in-memory
+    /// cache and persists the updated map to disk.
+    ///
+    /// This is called by `FsWatcher` when a user externally deletes a
+    /// service's binary directory, ensuring the version cache stays in sync
+    /// with the actual filesystem state.
+    pub fn remove_active_version(&self, app: &AppHandle, service_id: &str) -> Result<(), String> {
+        {
+            let mut map = self
+                .active_versions
+                .write()
+                .map_err(|e| format!("RwLock poisoned: {}", e))?;
+            map.remove(service_id);
+        }
+        let snapshot = self
+            .active_versions
+            .read()
+            .map_err(|e| format!("RwLock poisoned: {}", e))?
+            .clone();
+        Self::save_current_versions(app, &snapshot)
+    }
+
     /// Returns the full `HashMap<String, String>` of active versions from
     /// the in-memory cache — no disk reads.
     pub fn all_active_versions(&self) -> HashMap<String, String> {
@@ -299,5 +343,152 @@ impl CatalogManager {
             .read()
             .map(|map| map.clone())
             .unwrap_or_default()
+    }
+
+    /// Returns all unique service IDs registered in the catalog.
+    pub fn all_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.services.iter().map(|s| s.id.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    /// Scans `bin/` on disk to discover which service versions are actually
+    /// installed, and updates the `installed_versions` cache.
+    ///
+    /// This is called at startup in `load_or_create` and can also be called
+    /// later if the app needs to resync with the filesystem.
+    ///
+    /// If `bin/` does not exist yet (e.g. first launch), the cache remains
+    /// empty — this is not an error.
+    ///
+    /// Additionally, any stale `active_versions` entries whose service
+    /// directory no longer exists on disk are purged from memory and
+    /// persisted to `current_versions.json`.  This keeps the filesystem as
+    /// the single source of truth — manually deleting a service folder
+    /// immediately unregisters it as the active OS version.
+    pub fn scan_installed_versions(&self, app: &AppHandle) {
+        let bin_root = VoltPath::bin_dir(app);
+        if !bin_root.exists() {
+            return;
+        }
+
+        let mut installed: HashMap<String, Vec<String>> = HashMap::new();
+
+        if let Ok(entries) = fs::read_dir(&bin_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+
+                let service_id = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(name)
+                        if !name.starts_with('.')
+                            && !name.starts_with("tmp_")
+                            && !name.starts_with('_') =>
+                    {
+                        name.to_string()
+                    }
+                    _ => continue,
+                };
+
+                let mut versions: Vec<String> = Vec::new();
+                if let Ok(ver_entries) = fs::read_dir(&path) {
+                    for ver_entry in ver_entries.flatten() {
+                        if ver_entry.path().is_dir() {
+                            if let Some(ver_name) =
+                                ver_entry.file_name().to_str().map(|s| s.to_string())
+                            {
+                                versions.push(ver_name);
+                            }
+                        }
+                    }
+                }
+
+                versions.sort();
+                installed.insert(service_id, versions);
+            }
+        }
+
+        if let Ok(mut cache) = self.installed_versions.write() {
+            *cache = installed.clone();
+        }
+
+        // Purge stale active versions whose service directory no longer
+        // exists on disk.  This keeps the filesystem as the single source of
+        // truth.
+        if let Ok(mut active) = self.active_versions.write() {
+            let stale: Vec<String> = active
+                .keys()
+                .filter(|id| !installed.contains_key(*id) || installed[*id].is_empty())
+                .cloned()
+                .collect();
+
+            if !stale.is_empty() {
+                for id in &stale {
+                    active.remove(id);
+                }
+                let snapshot = active.clone();
+                drop(active);
+                let _ = Self::save_current_versions(app, &snapshot);
+            }
+        }
+    }
+
+    /// Returns the map of `service_id → [installed versions]`.
+    #[allow(dead_code)]
+    pub fn all_installed_versions(&self) -> HashMap<String, Vec<String>> {
+        self.installed_versions
+            .read()
+            .map(|map| map.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns the installed versions for a specific service.
+    pub fn installed_versions_for(&self, id: &str) -> Vec<String> {
+        self.installed_versions
+            .read()
+            .map(|map| map.get(id).cloned().unwrap_or_default())
+            .unwrap_or_default()
+    }
+
+    /// Builds the `ServiceInfoResponse` list sent to the frontend.
+    /// One entry per unique service ID, with all available versions collected
+    /// and URL templates resolved against the primary version.
+    pub fn get_catalog(&self) -> Vec<ServiceInfoResponse> {
+        self.all_ids()
+            .into_iter()
+            .filter_map(|id| {
+                let primary = self.by_id(&id)?;
+                let versions: Vec<String> = self
+                    .services
+                    .iter()
+                    .filter(|s| s.id == id)
+                    .map(|s| s.version.clone())
+                    .collect();
+
+                let installed_versions = self.installed_versions_for(&id);
+
+                Some(ServiceInfoResponse {
+                    id: id.clone(),
+                    name: primary.display_name(),
+                    port: primary.port,
+                    version: primary.version.clone(),
+                    versions,
+                    installed_versions,
+                    download_url: primary
+                        .url_template
+                        .as_ref()
+                        .map(|t| t.replace("{version}", &primary.version))
+                        .unwrap_or_default(),
+                    sha256: primary.sha256.clone(),
+                    pgp_signature_url: primary
+                        .pgp_signature_url_template
+                        .as_ref()
+                        .map(|t| t.replace("{version}", &primary.version)),
+                })
+            })
+            .collect()
     }
 }

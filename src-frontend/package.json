@@ -26,7 +26,6 @@
     "@tauri-apps/plugin-upload": "^2.3.0",
     "@vueuse/core": "^14.3.0",
     "@vueuse/nuxt": "^14.3.0",
-    "jszip": "^3.10.1",
     "nuxt": "^4.0.0",
     "pinia": "^2.3.0",
     "tailwindcss": "^4.3.0",

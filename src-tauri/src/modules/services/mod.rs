@@ -373,6 +373,28 @@ impl ServiceProcesses {
         let prefix = format!("{}:", id);
         Ok(instances.keys().any(|k| k.starts_with(&prefix)))
     }
+
+    /// Stops every running instance of a service, identified by `id` only
+    /// (regardless of version).  This is the frontend-facing equivalent of
+    /// `stop()` when the caller does not know the exact version.
+    pub async fn stop_all_by_id(&self, id: &str, strategy: KillStrategy) -> Result<(), String> {
+        let keys: Vec<String> = {
+            let instances = self.instances.lock().map_err(|e| e.to_string())?;
+            let prefix = format!("{}:", id);
+            instances
+                .keys()
+                .filter(|k| k.starts_with(&prefix))
+                .cloned()
+                .collect()
+        };
+
+        for key in &keys {
+            let version = key.strip_prefix(&format!("{}:", id)).unwrap_or(key);
+            self.stop(id, version, strategy).await?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for ServiceProcesses {

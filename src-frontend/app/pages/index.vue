@@ -57,6 +57,11 @@ const servicesStore = useServicesStore()
         />
       </div>
 
+      <!-- Service Catalog -->
+      <div class="px-6 pb-6">
+        <ServiceCatalog />
+      </div>
+
       <!-- Logs Section -->
       <div class="px-6 pb-6">
         <h2 class="text-sm font-semibold text-muted uppercase tracking-wider mb-4">
@@ -64,7 +69,7 @@ const servicesStore = useServicesStore()
         </h2>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <LogConsole
-            v-for="service in servicesStore.services"
+            v-for="service in servicesStore.services.filter(s => s.version)"
             :key="service.id"
             :service-id="service.id"
             :version="service.version"

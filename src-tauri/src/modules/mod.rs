@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod commands;
 pub mod download;
 pub mod env;
+pub mod fs_watcher;
 pub mod installer;
 pub mod logger;
 pub mod paths;

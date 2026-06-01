@@ -21,6 +21,7 @@ chrono = { version = "0.4", features = ["now"] }
 winreg = "0.52"
 windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 junction = "1.2.0"
+notify = "7"
 
 # --- TAURI v2 PLUGIN ECOSYSTEM ---
 tauri-plugin-shell = "2"

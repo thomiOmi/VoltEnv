@@ -4,6 +4,7 @@
 mod modules;
 mod utils;
 use modules::catalog::CatalogManager;
+use modules::fs_watcher::FsWatcher;
 use modules::paths::VoltPath;
 use modules::services::ServiceProcesses;
 use tauri::Manager;
@@ -34,6 +35,7 @@ fn main() {
         }))
         .invoke_handler(tauri::generate_handler![
             modules::commands::download_service,
+            modules::commands::download_template_service,
             modules::commands::install_service,
             modules::commands::start_service,
             modules::commands::stop_service,
@@ -41,6 +43,8 @@ fn main() {
             modules::commands::force_stop_service,
             modules::commands::switch_service_version,
             modules::commands::get_active_versions,
+            modules::commands::get_catalog,
+            modules::commands::get_service_status,
             modules::logger::get_service_logs,
             modules::env::register_to_os_env,
             modules::env::register_service_environment,
@@ -69,6 +73,21 @@ fn main() {
             // Register central env/bin/ folder to OS PATH (idempotent)
             if let Err(e) = modules::env::init_central_env_bin(app.handle()) {
                 eprintln!("[voltenv] Failed to init central env bin: {}", e);
+            }
+
+            // Start the file system watcher for service binary directories.
+            // The watcher monitors bin/ for Remove events and emits
+            // "service-status-changed" events to the frontend in real time.
+            // It is managed as Tauri state so it lives for the app's lifetime.
+            match FsWatcher::new(app.handle().clone(), VoltPath::bin_dir(app.handle())) {
+                Ok(watcher) => {
+                    app.manage(watcher);
+                    eprintln!("[voltenv] File system watcher started");
+                }
+                Err(e) => {
+                    // Non-fatal: the app works without file watching.
+                    eprintln!("[voltenv] Failed to start file system watcher: {}", e);
+                }
             }
 
             #[cfg(debug_assertions)]

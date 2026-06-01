@@ -7,13 +7,37 @@ const servicesStore = useServicesStore()
 
 const isRunning = computed(() => props.service.status === 'Running')
 const isStarting = computed(() => props.service.status === 'Starting')
-const displayStatus = computed(() => {
+const isNotInstalled = computed(() => {
+  // Cross-reference with catalog's installedVersions (filesystem truth).
+  // Even if the backend returns a non-empty version, if the disk scan
+  // shows no installed binaries the service is definitively not installed.
+  const catalogEntry = servicesStore.catalog.find(s => s.id === props.service.id)
+  if (catalogEntry) {
+    return (catalogEntry.installedVersions?.length ?? 0) === 0
+  }
+  return !props.service.version
+})
+const isError = computed(() => props.service.status !== null && typeof props.service.status === 'object' && 'Error' in props.service.status)
+
+const statusLabel = computed(() => {
   if (isRunning.value) return 'Running'
   if (isStarting.value) return 'Starting'
-  if (typeof props.service.status === 'object' && 'Error' in props.service.status) {
-    return 'Error'
-  }
+  if (isError.value) return 'Error'
   return 'Stopped'
+})
+
+const badgeColor = computed(() => {
+  if (isRunning.value) return 'success'
+  if (isStarting.value) return 'warning'
+  if (isError.value) return 'error'
+  return 'neutral'
+})
+
+const errorMessage = computed(() => {
+  if (props.service.status !== null && typeof props.service.status === 'object' && 'Error' in props.service.status) {
+    return (props.service.status as { Error: string }).Error
+  }
+  return null
 })
 
 const hasMultipleVersions = computed(() => {
@@ -29,11 +53,8 @@ const otherVersions = computed(() => {
 </script>
 
 <template>
-  <div
-    class="rounded-xl border border-default bg-elevated/50 hover:border-accented transition-all duration-300 overflow-hidden"
-  >
-    <!-- Header -->
-    <div class="p-4 pb-2">
+  <UCard variant="outline">
+    <template #header>
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <div
@@ -42,94 +63,112 @@ const otherVersions = computed(() => {
               ? 'bg-success animate-pulse shadow-lg shadow-success/30'
               : 'bg-error/50'"
           />
-          <span class="font-semibold text-sm text-highlighted">{{ service.name }}</span>
+          <NuxtLink
+            :to="`/services/${service.id}`"
+            class="font-semibold text-sm text-highlighted hover:text-primary transition-colors"
+          >
+            {{ service.name }}
+          </NuxtLink>
         </div>
-        <UBadge
-          :color="isRunning ? 'success' : isStarting ? 'warning' : 'neutral'"
-          variant="soft"
-          size="sm"
-        >
-          <template #leading>
-            <div
-              class="size-1.5 rounded-full"
-              :class="isRunning ? 'bg-success animate-pulse' : 'bg-current'"
-            />
-          </template>
-          {{ displayStatus }}
-        </UBadge>
-      </div>
-    </div>
 
-    <!-- Body -->
-    <div class="px-4 pb-3 space-y-1.5 text-sm">
+        <div class="flex items-center gap-2">
+          <UBadge
+            :color="badgeColor"
+            variant="soft"
+            size="sm"
+          >
+            <template #leading>
+              <div
+                class="size-1.5 rounded-full"
+                :class="isRunning ? 'bg-success animate-pulse' : 'bg-current'"
+              />
+            </template>
+            {{ statusLabel }}
+          </UBadge>
+        </div>
+      </div>
+    </template>
+
+    <div class="space-y-1.5 text-sm">
       <div class="flex justify-between">
         <span class="text-muted">Port</span>
         <span class="text-default font-mono">{{ service.port }}</span>
       </div>
+
       <div class="flex justify-between">
         <span class="text-muted">Version</span>
         <span class="text-default font-mono flex items-center gap-1.5">
-          {{ service.version }}
-          <UBadge
-            v-if="servicesStore.isActiveVersion(service.id, service.version)"
-            color="success"
-            variant="subtle"
-            size="xs"
-          >
-            Active OS
-          </UBadge>
+          <template v-if="service.version">
+            {{ service.version }}
+            <UBadge
+              v-if="servicesStore.isActiveVersion(service.id, service.version)"
+              color="success"
+              variant="subtle"
+              size="xs"
+            >
+              Active OS
+            </UBadge>
+          </template>
+          <span v-else class="text-dimmed italic text-xs">Not installed</span>
         </span>
+      </div>
+
+      <div v-if="errorMessage" class="mt-2">
+        <UTooltip :text="errorMessage">
+          <div class="flex items-center gap-1.5 text-xs text-error">
+            <span class="i-lucide-alert-circle size-3.5 shrink-0" />
+            <span class="truncate">{{ errorMessage }}</span>
+          </div>
+        </UTooltip>
       </div>
     </div>
 
-    <!-- Footer actions -->
-    <div class="px-4 pb-4 pt-1 flex flex-col gap-2">
-      <!-- Start -->
-      <UButton
-        v-if="!isRunning"
-        color="success"
-        variant="soft"
-        block
-        icon="i-lucide-play"
-        :loading="servicesStore.loadingStates[service.id]"
-        @click="servicesStore.startService(service.id)"
-      >
-        Start
-      </UButton>
-
-      <!-- Stop -->
-      <UButton
-        v-if="isRunning"
-        color="error"
-        variant="soft"
-        block
-        icon="i-lucide-square-stop"
-        :loading="servicesStore.loadingStates[service.id]"
-        @click="servicesStore.stopService(service.id)"
-      >
-        Stop
-      </UButton>
-
-      <!-- Version switch -->
-      <template v-if="!isRunning && hasMultipleVersions">
-        <div
-          v-for="ver in otherVersions"
-          :key="ver"
-          class="flex items-center justify-between px-3 py-1.5 rounded-md bg-muted border border-default"
+    <template #footer>
+      <div class="flex flex-col gap-2">
+        <UButton
+          color="success"
+          variant="soft"
+          block
+          icon="i-lucide-play"
+          :loading="servicesStore.loadingStates[service.id]"
+          :disabled="isNotInstalled || isRunning || isStarting"
+          @click="servicesStore.startService(service.id)"
         >
-          <span class="text-xs font-mono text-muted">{{ ver }}</span>
-          <UButton
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            icon="i-lucide-arrow-left-right"
-            :loading="servicesStore.switchingVersions[service.id]"
-            @click="servicesStore.switchServiceVersion(service.id, ver)"
+          Start
+        </UButton>
+
+        <UButton
+          color="error"
+          variant="soft"
+          block
+          icon="i-lucide-square-stop"
+          :disabled="isNotInstalled || !isRunning"
+          :loading="servicesStore.loadingStates[service.id]"
+          @click="servicesStore.stopService(service.id)"
+        >
+          Stop
+        </UButton>
+
+        <template v-if="!isRunning && !isStarting && hasMultipleVersions">
+          <div
+            v-for="ver in otherVersions"
+            :key="ver"
+            class="flex items-center justify-between px-3 py-1.5 rounded-md bg-muted border border-default"
           >
-            Switch
-          </UButton>
-        </div>
-      </template>
-    </div>
-  </div>
+            <span class="text-xs font-mono text-muted">{{ ver }}</span>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-arrow-left-right"
+              :loading="servicesStore.switchingVersions[service.id]"
+              @click="servicesStore.switchServiceVersion(service.id, ver)"
+            >
+              Switch
+            </UButton>
+          </div>
+        </template>
+      </div>
+    </template>
+  </UCard>
 </template>
