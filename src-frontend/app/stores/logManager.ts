@@ -1,52 +1,94 @@
-import { defineStore } from 'pinia'
+import { listen } from '@tauri-apps/api/event'
+import type { UnlistenFn } from '@tauri-apps/api/event'
+import type { ServiceLogPayload } from '#shared/types/events'
 
-export interface LogPayload {
-  service_id: string
-  version: string
+interface LogEntry {
   message: string
   timestamp: string
-  is_error: boolean
+  isError: boolean
+}
+
+interface SystemLogEntry {
+  level: 'info' | 'warn' | 'error'
+  message: string
+  timestamp: string
 }
 
 const MAX_LOGS_PER_INSTANCE = 1000
+const MAX_SYSTEM_LOGS = 500
 
-function stamp(): string {
-  return new Date().toISOString()
-}
+export const useLogManagerStore = defineStore('logManager', () => {
+  const logs = ref<Record<string, LogEntry[]>>({})
+  const systemLogs = ref<SystemLogEntry[]>([])
 
-export const useLogManagerStore = defineStore('logManager', {
-  state: () => ({
-    logs: {} as Record<string, LogPayload[]>,
-  }),
+  let _unlistenLog: UnlistenFn | null = null
+  let _unlistenSystem: UnlistenFn | null = null
+  const _unlistenLogService: Map<string, UnlistenFn> = new Map()
 
-  actions: {
-    pushLog(serviceId: string, version: string, message: string, isError = false) {
-      this._appendLog(serviceId, version, message, isError, stamp())
-    },
+  function _key(serviceId: string, version: string): string {
+    return `${serviceId}:${version}`
+  }
 
-    clearLogs(serviceId: string, version: string) {
-      const key = `${serviceId}:${version}`
-      this.logs = Object.fromEntries(
-        Object.entries(this.logs).filter(([k]) => k !== key),
-      )
-    },
+  function _appendLog(key: string, message: string, isError: boolean) {
+    if (!logs.value[key]) {
+      logs.value[key] = []
+    }
+    const arr = logs.value[key]
+    arr.push({
+      message,
+      timestamp: new Date().toISOString(),
+      isError,
+    })
+    if (arr.length > MAX_LOGS_PER_INSTANCE) {
+      arr.splice(0, arr.length - MAX_LOGS_PER_INSTANCE)
+    }
+  }
 
-    _appendLog(
-      serviceId: string,
-      version: string,
-      message: string,
-      isError: boolean,
-      timestamp: string,
-    ) {
-      const key = `${serviceId}:${version}`
-      const current = this.logs[key] ?? []
-      this.logs = {
-        ...this.logs,
-        [key]: [
-          ...current.slice(-(MAX_LOGS_PER_INSTANCE - 1)),
-          { service_id: serviceId, version, message, timestamp, is_error: isError },
-        ],
+  async function startListening() {
+    _unlistenLog = await listen<ServiceLogPayload>('service-log', (event) => {
+      const { service_id, version, message, is_error } = event.payload
+      _appendLog(_key(service_id, version), message, is_error)
+    })
+
+    _unlistenSystem = await listen<SystemLogEntry>('system-log', (event) => {
+      systemLogs.value.push(event.payload)
+      if (systemLogs.value.length > MAX_SYSTEM_LOGS) {
+        systemLogs.value.splice(0, systemLogs.value.length - MAX_SYSTEM_LOGS)
       }
-    },
-  },
+    })
+  }
+
+  function stopListening() {
+    _unlistenLog?.()
+    _unlistenLog = null
+    _unlistenSystem?.()
+    _unlistenSystem = null
+    _unlistenLogService.forEach(fn => fn())
+    _unlistenLogService.clear()
+  }
+
+  function pushLog(serviceId: string, version: string, message: string, isError: boolean) {
+    _appendLog(_key(serviceId, version), message, isError)
+  }
+
+  function clearLogs(serviceId: string, version: string) {
+    const k = _key(serviceId, version)
+    if (logs.value[k]) {
+      logs.value[k] = []
+    }
+  }
+
+  function getLogs(serviceId: string, version: string): LogEntry[] {
+    return logs.value[_key(serviceId, version)] ?? []
+  }
+
+  return {
+    logs,
+    systemLogs,
+    startListening,
+    stopListening,
+    pushLog,
+    clearLogs,
+    getLogs,
+  }
 })

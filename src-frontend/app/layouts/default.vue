@@ -9,6 +9,21 @@ const links = [[{
   to: '/',
   onSelect: () => { open.value = false },
 }, {
+  label: 'Quick Create',
+  icon: 'i-lucide-sparkles',
+  to: '/quick-create',
+  onSelect: () => { open.value = false },
+}, {
+  label: 'Logs',
+  icon: 'i-lucide-scroll-text',
+  to: '/logs',
+  onSelect: () => { open.value = false },
+}, {
+  label: 'Custom Service',
+  icon: 'i-lucide-puzzle',
+  to: '/custom-service',
+  onSelect: () => { open.value = false },
+}, {
   label: 'Settings',
   icon: 'i-lucide-settings',
   to: '/settings',

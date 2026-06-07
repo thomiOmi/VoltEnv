@@ -1,0 +1,21 @@
+{
+  "id": "mysql",
+  "name": "MySQL",
+  "kind": "built-in",
+  "defaultVersion": "8.0.35",
+  "versions": {
+    "8.0.35": {
+      "downloadUrl": "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.35-winx64.zip",
+      "sha256": null
+    }
+  },
+  "binaryName": "mysqld.exe",
+  "startArgs": ["--defaults-file={{config_path}}", "--datadir={{data_dir}}"],
+  "stopArgs": [],
+  "port": 3306,
+  "configTemplateName": "my.cnf.tpl",
+  "healthCheck": { "type": "command", "command": "{{bin_dir}}/bin/mysqladmin ping", "timeoutMs": 15000 },
+  "postInstallCommands": [
+    "{{bin_dir}}/bin/mysqld --initialize-insecure --datadir={{data_dir}}"
+  ]
+}

@@ -1,33 +1,32 @@
-export interface ServiceInfo {
-  id: string
-  name: string
-  port: number
-  version: string
-  versions?: string[]
-  /** Subset of `versions` that are actually installed on disk. */
-  installedVersions?: string[]
+export interface VersionInfo {
   downloadUrl: string
-  sha256?: string
-  pgpSignatureUrl?: string
+  sha256: string | null
 }
 
-export interface Service {
+export interface HealthCheckConfig {
+  type: string
+  command: string | null
+  timeoutMs: number
+}
+
+export interface ServiceDefinition {
   id: string
   name: string
-  version: string
-  status: 'Running' | 'Stopped' | 'Starting' | { Error: string }
+  kind: string
+  defaultVersion: string
+  versions: Record<string, VersionInfo>
+  binaryName: string
+  startArgs: string[]
+  stopArgs: string[]
   port: number
+  configTemplateName: string | null
+  healthCheck: HealthCheckConfig | null
+  postInstallCommands: string[]
 }
 
-export interface Asset {
-  name: string
-  url: string
-  destinationSubdir: string
-  sha256: string | null
-  pgpSignatureUrl: string | null
-  extract: boolean
-}
-
-export interface DownloadManifest {
-  assets: Asset[]
+export interface ServiceStatus {
+  id: string
+  version: string
+  status: 'running' | 'stopped' | 'starting' | 'error'
+  port: number
 }

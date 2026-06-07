@@ -1,97 +1,141 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { DownloadManifest } from '#shared/types/service'
+import type { ServiceDefinition, ServiceStatus } from '#shared/types/service'
+import type { VhostInfo } from '#shared/types/vhost'
+import type { QuickCreateResult } from '#shared/types/quick-create'
+import type { Settings } from '#shared/types/settings'
 
-async function execCommand(command: string, args?: Record<string, unknown>): Promise<void> {
-  try {
-    await invoke(command, args)
+export function useServiceApi() {
+  async function getServices(): Promise<ServiceDefinition[]> {
+    try {
+      return await invoke<ServiceDefinition[]>('get_services')
+    }
+    catch (e) {
+      console.error('[api] get_services failed:', e)
+      return []
+    }
   }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`[ServiceApi] ${command}: ${message}`)
-    throw error
+
+  async function setupService(id: string, version: string): Promise<void> {
+    await invoke('setup_service', { id, version })
   }
-}
 
-async function invokeApi<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  try {
-    return await invoke<T>(command, args)
+  async function startService(id: string): Promise<number> {
+    try {
+      return await invoke<number>('start_service', { id })
+    }
+    catch (e) {
+      throw new Error(String(e))
+    }
   }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`[ServiceApi] ${command}: ${message}`)
-    throw error
+
+  async function stopService(id: string): Promise<void> {
+    await invoke('stop_service', { id })
   }
-}
 
-export const useServiceApi = () => {
-  const getServices = () =>
-    invokeApi<ServiceInfo[]>('get_catalog')
+  async function getServiceStatus(id: string): Promise<ServiceStatus | null> {
+    try {
+      return await invoke<ServiceStatus | null>('get_service_status', { id })
+    }
+    catch {
+      return null
+    }
+  }
 
-  const getServiceStatus = (id: string) =>
-    invokeApi<Service>('get_service_status', { id })
+  async function switchServiceVersion(id: string, version: string): Promise<void> {
+    await invoke('switch_service_version', { id, version })
+  }
 
-  const startService = (id: string, version: string) =>
-    execCommand('start_service', { id, version })
+  async function getServiceLogs(id: string, version: string, linesCount = 50): Promise<string[]> {
+    try {
+      return await invoke<string[]>('get_service_logs', { id, version, linesCount })
+    }
+    catch {
+      return []
+    }
+  }
 
-  const stopService = (id: string) =>
-    execCommand('stop_service', { id })
+  async function listVhosts(): Promise<VhostInfo[]> {
+    try {
+      return await invoke<VhostInfo[]>('list_vhosts')
+    }
+    catch {
+      return []
+    }
+  }
 
-  const downloadService = (id: string, version: string) =>
-    execCommand('download_service', { id, version })
+  async function createVhost(domain: string, root: string, port: number, phpPort?: number): Promise<VhostInfo> {
+    return await invoke<VhostInfo>('create_vhost', { domain, root, port, phpPort: phpPort ?? null })
+  }
 
-  const installService = (id: string, version: string) =>
-    execCommand('install_service', { id, version })
+  async function deleteVhost(domain: string): Promise<void> {
+    await invoke('delete_vhost', { domain })
+  }
 
-  const softStopService = (id: string) =>
-    execCommand('soft_stop_service', { id })
+  async function listDatabases(): Promise<string[]> {
+    try {
+      return await invoke<string[]>('list_databases')
+    }
+    catch {
+      return []
+    }
+  }
 
-  const forceStopService = (id: string) =>
-    execCommand('force_stop_service', { id })
+  async function createDatabase(name: string): Promise<void> {
+    await invoke('create_database', { name })
+  }
 
-  const switchServiceVersion = (id: string, version: string) =>
-    execCommand('switch_service_version', { id, version })
+  async function dropDatabase(name: string): Promise<void> {
+    await invoke('drop_database', { name })
+  }
 
-  const getActiveVersions = () =>
-    invokeApi<Record<string, string>>('get_active_versions')
+  async function createDbUser(username: string, password: string, database: string): Promise<void> {
+    await invoke('create_db_user', { username, password, database })
+  }
 
-  const getServiceLogs = (id: string, linesCount: number = 100) =>
-    invokeApi<string[]>('get_service_logs', { id, lines_count: linesCount })
+  async function quickCreate(projectName: string, createDatabase: boolean): Promise<QuickCreateResult> {
+    return await invoke<QuickCreateResult>('quick_create', { projectName, createDatabase })
+  }
 
-  const registerToOsEnv = () =>
-    execCommand('register_to_os_env')
+  async function getSettings(): Promise<Settings | null> {
+    try {
+      return await invoke<Settings>('get_settings')
+    }
+    catch {
+      return null
+    }
+  }
 
-  const registerServiceEnvironment = (id: string, version: string) =>
-    execCommand('register_service_environment', { id, version })
+  async function updateSettings(settings: Settings): Promise<void> {
+    await invoke('update_settings', { settings })
+  }
 
-  const unregisterServiceEnvironment = (id: string) =>
-    execCommand('unregister_service_environment', { id })
+  async function saveCustomService(service: ServiceDefinition): Promise<void> {
+    await invoke('save_custom_service', { service })
+  }
 
-  const restoreOsPathBackup = () =>
-    execCommand('restore_os_path_backup')
-
-  const isPortAvailable = (port: number) =>
-    invokeApi<boolean>('is_port_available', { port })
-
-  const downloadTemplateService = (id: string, manifest: DownloadManifest) =>
-    execCommand('download_template_service', { id, manifest })
+  async function deleteCustomService(id: string): Promise<void> {
+    await invoke('delete_custom_service', { id })
+  }
 
   return {
     getServices,
-    getServiceStatus,
+    setupService,
     startService,
     stopService,
-    downloadService,
-    installService,
-    softStopService,
-    forceStopService,
+    getServiceStatus,
     switchServiceVersion,
-    getActiveVersions,
     getServiceLogs,
-    registerToOsEnv,
-    registerServiceEnvironment,
-    unregisterServiceEnvironment,
-    restoreOsPathBackup,
-    isPortAvailable,
-    downloadTemplateService,
+    listVhosts,
+    createVhost,
+    deleteVhost,
+    listDatabases,
+    createDatabase,
+    dropDatabase,
+    createDbUser,
+    quickCreate,
+    getSettings,
+    updateSettings,
+    saveCustomService,
+    deleteCustomService,
   }
 }

@@ -1,0 +1,19 @@
+{
+  "id": "nginx",
+  "name": "Nginx",
+  "kind": "built-in",
+  "defaultVersion": "1.26.2",
+  "versions": {
+    "1.26.2": {
+      "downloadUrl": "https://nginx.org/download/nginx-1.26.2.zip",
+      "sha256": "942638cc31c836fe429fde22e4c46e497f89d3c2bbce46cd2c8800854fd71409"
+    }
+  },
+  "binaryName": "nginx.exe",
+  "startArgs": ["-p", "{{root}}", "-c", "{{config_path}}"],
+  "stopArgs": ["-s", "quit"],
+  "port": 8080,
+  "configTemplateName": "nginx.conf.tpl",
+  "healthCheck": { "type": "port", "timeoutMs": 10000 },
+  "postInstallCommands": []
+}

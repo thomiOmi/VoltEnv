@@ -33,6 +33,10 @@
     },
     "os:default",
     "log:default",
-    "store:default"
+    "store:default",
+    "dialog:default",
+    "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
   ]
 }

@@ -19,4 +19,6 @@ export interface ServiceLogPayload {
 export interface ServiceStatusChangedPayload {
   id: string
   status: string
+  version?: string
+  port?: number
 }
