@@ -43,6 +43,7 @@ function handleClear() {
         size="xs"
         icon="i-lucide-eraser"
         title="Clear Logs"
+        aria-label="Clear logs"
         @click="handleClear"
       />
     </div>
@@ -51,6 +52,8 @@ function handleClear() {
       ref="container"
       class="overflow-y-auto p-3 space-y-0.5 font-mono text-xs leading-relaxed"
       style="max-height: 320px; min-height: 120px;"
+      aria-live="polite"
+      aria-atomic="false"
     >
       <div v-if="displayLogs.length === 0" class="text-dimmed select-none italic">
         Waiting for logs…

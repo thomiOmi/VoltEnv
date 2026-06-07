@@ -230,6 +230,7 @@ function removeGroup(index: number) {
                   variant="ghost"
                   size="xs"
                   icon="i-lucide-pencil"
+                  aria-label="Edit group"
                   @click="openEditGroup(idx)"
                 />
                 <UButton
@@ -237,6 +238,7 @@ function removeGroup(index: number) {
                   variant="ghost"
                   size="xs"
                   icon="i-lucide-trash-2"
+                  aria-label="Remove group"
                   @click="removeGroup(idx)"
                 />
               </div>
@@ -266,6 +268,7 @@ function removeGroup(index: number) {
                 variant="ghost"
                 size="sm"
                 icon="i-lucide-trash-2"
+                aria-label="Delete vhost"
                 @click="handleDeleteVhost(vh.domain)"
               />
             </div>
@@ -291,6 +294,7 @@ function removeGroup(index: number) {
                 variant="ghost"
                 size="sm"
                 icon="i-lucide-trash-2"
+                aria-label="Drop database"
                 @click="handleDropDatabase(db)"
               />
             </div>
@@ -324,5 +328,3 @@ function removeGroup(index: number) {
     </UModal>
   </UDashboardPanel>
 </template>
-
-<!-- Performance Architect Tip: Added aria-labels to icon-only buttons for a11y -->

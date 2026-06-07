@@ -78,6 +78,17 @@ export const useLogManagerStore = defineStore('logManager', () => {
     }
   }
 
+  /**
+   * Performance Architect Tip: Removes all log entries for a specific service version from memory.
+   * Prevents state pollution and memory growth during long sessions.
+   */
+  function removeServiceLogs(serviceId: string, version: string) {
+    const k = _key(serviceId, version)
+    if (logs.value[k]) {
+      delete logs.value[k]
+    }
+  }
+
   function getLogs(serviceId: string, version: string): LogEntry[] {
     return logs.value[_key(serviceId, version)] ?? []
   }
@@ -89,6 +100,7 @@ export const useLogManagerStore = defineStore('logManager', () => {
     stopListening,
     pushLog,
     clearLogs,
+    removeServiceLogs,
     getLogs,
   }
 })

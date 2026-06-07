@@ -27,6 +27,7 @@ async function refresh() {
             color="neutral"
             variant="ghost"
             icon="i-lucide-refresh-cw"
+            aria-label="Refresh services"
             @click="refresh"
           />
         </template>

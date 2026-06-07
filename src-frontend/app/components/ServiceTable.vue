@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h } from 'vue'
+import { h, resolveComponent } from 'vue'
 import type { ServiceDefinition } from '#shared/types/service'
 
 const servicesStore = useServicesStore()
@@ -29,7 +29,8 @@ const columns = [
       const status = servicesStore.getStatus(row.original.id)
       const s = status?.status ?? 'stopped'
       const color = s === 'running' ? 'success' : s === 'starting' ? 'warning' : 'neutral'
-      return h('UBadge', { color, variant: 'subtle', size: 'sm' }, s)
+      const UBadge = resolveComponent('UBadge')
+      return h(UBadge, { color, variant: 'subtle', size: 'sm' }, { default: () => s })
     },
   },
   {
@@ -46,18 +47,20 @@ const columns = [
       const isRun = servicesStore.isRunning(id)
       const isLoading = servicesStore.isLoading(id)
       const notInstalled = !servicesStore.isInstalled(id)
+      const UButton = resolveComponent('UButton')
 
       return h('div', { class: 'flex items-center gap-1 justify-end' }, [
         notInstalled && !isRun
           ? h('span', { class: 'text-xs text-muted mr-1' }, 'Setup first')
           : h(
-              'UButton',
+              UButton,
               {
                 color: isRun ? 'error' : 'primary',
                 variant: 'soft',
                 size: 'sm',
                 loading: isLoading,
                 disabled: isLoading || (!isRun && notInstalled),
+                ariaLabel: isRun ? `Stop ${row.original.name}` : `Start ${row.original.name}`,
                 onClick: () => isRun ? servicesStore.stopService(id) : servicesStore.startService(id),
               },
               { default: () => isRun ? 'Stop' : 'Start' },

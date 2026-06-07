@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
+import { useLogManagerStore } from './logManager'
 import type { ServiceDefinition, ServiceStatus } from '#shared/types/service'
 import type { DownloadProgressPayload, InstallProgressPayload, ServiceStatusChangedPayload } from '#shared/types/events'
 
@@ -16,6 +17,7 @@ export const useServicesStore = defineStore('services', () => {
   let _unlistenInstall: UnlistenFn | null = null
 
   const { getServices } = useServiceApi()
+  const logManager = useLogManagerStore()
 
   const allDefinitions = computed(() => Array.from(definitions.value.values()))
 
@@ -75,6 +77,14 @@ export const useServicesStore = defineStore('services', () => {
       status: status as ServiceStatus['status'],
       port: port ?? existing.port,
     })
+
+    /**
+     * Performance Architect Tip: When a service stops, clear its log from memory.
+     * User can still view persisted logs from the backend via 'get_service_logs' if needed.
+     */
+    if (status === 'stopped') {
+      logManager.removeServiceLogs(id, version ?? existing.version)
+    }
   }
 
   async function init() {

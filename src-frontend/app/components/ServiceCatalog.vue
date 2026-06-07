@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h } from 'vue'
+import { h, resolveComponent } from 'vue'
 import type { ServiceDefinition } from '#shared/types/service'
 
 const servicesStore = useServicesStore()
@@ -31,8 +31,9 @@ const columns = [
     cell: ({ row }: { row: { original: ServiceDefinition } }) => {
       const svc = row.original
       const isInstalled = servicesStore.isInstalled(svc.id)
+      const UBadge = resolveComponent('UBadge')
       return h(
-        'UBadge',
+        UBadge,
         { color: isInstalled ? 'success' : 'neutral', variant: 'subtle', size: 'sm' },
         { default: () => isInstalled ? 'Installed' : 'Not installed' },
       )
@@ -47,19 +48,22 @@ const columns = [
       const progress = (servicesStore.downloadProgress as Record<string, number | undefined>)[svc.id]
       const installProgress = (servicesStore.installProgress as Record<string, number | undefined>)[svc.id]
       const activeProgress = installProgress ?? progress
+      const UProgress = resolveComponent('UProgress')
+      const UButton = resolveComponent('UButton')
 
       return h('div', { class: 'flex items-center gap-2 justify-end' }, [
         activeProgress !== undefined
-          ? h('UProgress', { value: activeProgress, class: 'w-20', color: 'primary', size: 'sm' })
+          ? h(UProgress, { value: activeProgress, class: 'w-20', color: 'primary', size: 'sm' })
           : null,
         h(
-          'UButton',
+          UButton,
           {
             color: 'primary',
             variant: 'soft',
             size: 'sm',
             loading,
             disabled: loading,
+            ariaLabel: `Setup ${svc.name}`,
             onClick: () => handleSetup(svc.id, svc.defaultVersion),
           },
           { default: () => 'Setup' },
