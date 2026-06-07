@@ -7,7 +7,7 @@ pub mod commands;
 pub mod config;
 pub mod download;
 pub mod installer;
-pub mod log;
+pub mod logging;
 pub mod paths;
 pub mod process;
 pub mod service;

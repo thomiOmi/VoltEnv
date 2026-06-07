@@ -1,14 +1,12 @@
 use std::collections::HashMap;
-use std::path::Path;
-use tauri::{AppHandle, Emitter, State};
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::config::ConfigGenerator;
-use crate::download::manager::DownloadManager;
-use crate::download::verifier::Verifier;
-use crate::installer::manager::InstallerManager;
+use crate::installer::InstallerManager;
 use crate::paths::VoltPath;
 use crate::process::ServiceProcesses;
-use crate::service::ServiceRegistry;
+use crate::service::{ServiceDefinition, ServiceRegistry};
 use crate::settings::Settings;
 
 #[tauri::command]
@@ -24,28 +22,15 @@ pub async fn setup_service(app: AppHandle, id: String, version: String) -> Resul
         .ok_or_else(|| format!("Version '{}' not found for '{}'", version, id))?;
 
     let bin_dir = VoltPath::service_dir(&app, &id, &version);
-    let binary_path = bin_dir.join(&def.binary_name);
-
-    if binary_path.exists() {
-        app.emit(
-            "service-status-changed",
-            serde_json::json!({ "id": id, "status": "installed", "version": version }),
-        )
-        .ok();
+    if bin_dir.exists() && bin_dir.join(&def.binary_name).exists() {
         return Ok(());
     }
 
-    if version_info.download_url.is_empty() {
-        return Err(format!("No download URL for {} {}", id, version));
-    }
-
-    let temp_path =
-        VoltPath::temporary_download_path(&app, &id, &version, &version_info.download_url);
-
-    DownloadManager::download(&app, &id, &version_info.download_url, &temp_path).await?;
+    let temp_path = VoltPath::temporary_download_path(&app, &id, &version, &version_info.download_url);
+    crate::download::Downloader::download(&app, &id, &version_info.download_url, &temp_path).await?;
 
     if let Some(ref sha256) = version_info.sha256 {
-        Verifier::sha256(&temp_path, sha256).await?;
+        crate::installer::Verifier::sha256(&temp_path, sha256).await?;
     }
 
     InstallerManager::install(&app, &id, &bin_dir, &temp_path).await?;
@@ -55,9 +40,10 @@ pub async fn setup_service(app: AppHandle, id: String, version: String) -> Resul
     let data_dir = VoltPath::data_dir(&app, &id, &version);
 
     for cmd_str in &def.post_install_commands {
-        let substituted =
-            substitute_args(cmd_str, &root, &bin_dir, &config_path, &data_dir, def.port);
-        run_command(&substituted).await?;
+        let args = split_and_substitute_args(cmd_str, &root, &bin_dir, &config_path, &data_dir, def.port);
+        if !args.is_empty() {
+            run_command(&args[0], &args[1..]).await?;
+        }
     }
 
     app.emit(
@@ -138,7 +124,7 @@ pub async fn start_service(
     let substituted_args: Vec<String> = def
         .start_args
         .iter()
-        .map(|arg| substitute_args(arg, &root, &bin_dir, &config_path, &data_dir, port))
+        .flat_map(|arg| split_and_substitute_args(arg, &root, &bin_dir, &config_path, &data_dir, port))
         .collect();
 
     let cwd = bin_dir.to_string_lossy().to_string();
@@ -204,7 +190,7 @@ async fn is_port_free(port: u16) -> bool {
 async fn health_check(
     hc: &crate::service::HealthCheckConfig,
     port: u16,
-    _def: &crate::service::ServiceDefinition,
+    _def: &ServiceDefinition,
     root: &Path,
     bin_dir: &Path,
     config_path: &Path,
@@ -227,8 +213,11 @@ async fn health_check(
         }
         "command" => {
             if let Some(ref cmd) = hc.command {
-                let substituted = substitute_args(cmd, root, bin_dir, config_path, data_dir, port);
-                run_command(&substituted).await
+                let args = split_and_substitute_args(cmd, root, bin_dir, config_path, data_dir, port);
+                if !args.is_empty() {
+                    run_command(&args[0], &args[1..]).await?;
+                }
+                Ok(())
             } else {
                 Ok(())
             }
@@ -237,39 +226,37 @@ async fn health_check(
     }
 }
 
-fn substitute_args(
+fn split_and_substitute_args(
     cmd: &str,
     root: &Path,
     bin_dir: &Path,
     config_path: &Path,
     data_dir: &Path,
     port: u16,
-) -> String {
-    cmd.replace("{{root}}", &root.to_string_lossy())
+) -> Vec<String> {
+    // Basic substitution
+    let substituted = cmd.replace("{{root}}", &root.to_string_lossy())
         .replace("{{bin_dir}}", &bin_dir.to_string_lossy())
         .replace("{{config_path}}", &config_path.to_string_lossy())
         .replace("{{data_dir}}", &data_dir.to_string_lossy())
-        .replace("{{port}}", &port.to_string())
+        .replace("{{port}}", &port.to_string());
+
+    // Basic space splitting, but keeping paths with spaces if they are quoted
+    // For a production app, use a proper shell-word splitter crate like `shlex`
+    shlex::split(&substituted).unwrap_or_else(|| vec![substituted])
 }
 
-async fn run_command(cmd_str: &str) -> Result<(), String> {
-    let status = if cfg!(target_os = "windows") {
-        tokio::process::Command::new("cmd")
-            .args(["/C", cmd_str])
-            .status()
-            .await
-            .map_err(|e| format!("Failed to run command: {}", e))?
-    } else {
-        tokio::process::Command::new("sh")
-            .args(["-c", cmd_str])
-            .status()
-            .await
-            .map_err(|e| format!("Failed to run command: {}", e))?
-    };
+async fn run_command(program: &str, args: &[String]) -> Result<(), String> {
+    let status = tokio::process::Command::new(program)
+        .args(args)
+        .status()
+        .await
+        .map_err(|e| format!("Failed to run command '{}': {}", program, e))?;
 
     if !status.success() {
         return Err(format!(
-            "Command failed with exit code: {:?}",
+            "Command '{}' failed with exit code: {:?}",
+            program,
             status.code()
         ));
     }
@@ -315,7 +302,7 @@ pub async fn get_service_status(
 
 #[tauri::command]
 pub async fn get_services(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
-    let registry = crate::service::ServiceRegistry::load_all(&app);
+    let registry = ServiceRegistry::load_all(&app);
     let services: Vec<serde_json::Value> = registry
         .all()
         .into_iter()
@@ -348,7 +335,7 @@ pub async fn switch_service_version(
         ));
     }
 
-    let bin_dir = crate::paths::VoltPath::service_dir(&app, &id, &version);
+    let bin_dir = VoltPath::service_dir(&app, &id, &version);
     let binary_path = bin_dir.join(&def.binary_name);
     if !binary_path.exists() {
         return Err(format!(
@@ -357,9 +344,9 @@ pub async fn switch_service_version(
         ));
     }
 
-    crate::paths::VoltPath::create_env_junction(&app, &id, &version)?;
+    VoltPath::create_env_junction(&app, &id, &version)?;
 
-    let mut settings = crate::settings::Settings::load(&app);
+    let mut settings = Settings::load(&app);
     settings.resolved_ports.remove(&id);
     settings.active_versions.insert(id.clone(), version.clone());
     let _ = settings.save(&app);
@@ -371,4 +358,37 @@ pub async fn switch_service_version(
     .ok();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_and_substitute_args() {
+        let root = Path::new("/root");
+        let bin_dir = Path::new("/bin");
+        let config_path = Path::new("/config/file.conf");
+        let data_dir = Path::new("/data");
+        let port = 8080;
+
+        let cmd = "-p {{port}} --root \"{{root}}\" --config {{config_path}}";
+        let args = split_and_substitute_args(cmd, root, bin_dir, config_path, data_dir, port);
+
+        assert_eq!(args, vec!["-p", "8080", "--root", "/root", "--config", "/config/file.conf"]);
+    }
+
+    #[test]
+    fn test_split_and_substitute_with_spaces() {
+        let root = Path::new("/path with spaces");
+        let bin_dir = Path::new("/bin");
+        let config_path = Path::new("/config");
+        let data_dir = Path::new("/data");
+        let port = 8080;
+
+        let cmd = "--dir \"{{root}}\" --other {{data_dir}}";
+        let args = split_and_substitute_args(cmd, root, bin_dir, config_path, data_dir, port);
+
+        assert_eq!(args, vec!["--dir", "/path with spaces", "--other", "/data"]);
+    }
 }

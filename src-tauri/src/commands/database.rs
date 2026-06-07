@@ -82,17 +82,22 @@ async fn run_mysql(app: &AppHandle, sql: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), String> {
-    let sanitized: String = name
+fn sanitize_identifier(id: &str) -> Result<String, String> {
+    let sanitized: String = id
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if sanitized.is_empty() {
-        return Err("Invalid database name".to_string());
+    if sanitized.is_empty() || sanitized != id {
+        return Err(format!("Invalid MySQL identifier: {}", id));
     }
+    Ok(sanitized)
+}
+
+pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), String> {
+    let name = sanitize_identifier(name)?;
     run_mysql(
         app,
-        &format!("CREATE DATABASE IF NOT EXISTS `{}`", sanitized),
+        &format!("CREATE DATABASE IF NOT EXISTS `{}`", name),
     )
     .await?;
     Ok(())
@@ -105,14 +110,8 @@ pub async fn create_database(app: AppHandle, name: String) -> Result<(), String>
 
 #[tauri::command]
 pub async fn drop_database(app: AppHandle, name: String) -> Result<(), String> {
-    let sanitized: String = name
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
-    if sanitized.is_empty() {
-        return Err("Invalid database name".to_string());
-    }
-    run_mysql(&app, &format!("DROP DATABASE IF EXISTS `{}`", sanitized)).await?;
+    let name = sanitize_identifier(&name)?;
+    run_mysql(&app, &format!("DROP DATABASE IF EXISTS `{}`", name)).await?;
     Ok(())
 }
 
@@ -123,20 +122,17 @@ pub async fn create_db_user(
     password: String,
     database: String,
 ) -> Result<(), String> {
-    let user_sanitized: String = username
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
-    let db_sanitized: String = database
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
+    let user = sanitize_identifier(&username)?;
+    let db = sanitize_identifier(&database)?;
+
+    // Password is used in IDENTIFIED BY '...', so we need to escape single quotes
+    let safe_password = password.replace('\'', "''");
 
     run_mysql(
         &app,
         &format!(
             "CREATE USER IF NOT EXISTS '{}'@'localhost' IDENTIFIED BY '{}'",
-            user_sanitized, password
+            user, safe_password
         ),
     )
     .await?;
@@ -145,7 +141,7 @@ pub async fn create_db_user(
         &app,
         &format!(
             "GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'localhost'",
-            db_sanitized, user_sanitized
+            db, user
         ),
     )
     .await?;
@@ -170,4 +166,17 @@ pub async fn list_databases(app: AppHandle) -> Result<Vec<String>, String> {
         })
         .collect();
     Ok(databases)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_identifier() {
+        assert!(sanitize_identifier("my_db").is_ok());
+        assert!(sanitize_identifier("db123").is_ok());
+        assert!(sanitize_identifier("db; drop table").is_err());
+        assert!(sanitize_identifier("db name").is_err());
+    }
 }

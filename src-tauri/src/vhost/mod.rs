@@ -12,24 +12,41 @@ pub struct VhostInfo {
 pub struct VhostManager;
 
 impl VhostManager {
+    pub fn is_valid_domain(domain: &str) -> bool {
+        if domain.is_empty() || domain.len() > 253 {
+            return false;
+        }
+        // Basic domain validation (alphanumeric, dots, dashes)
+        domain.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-')
+            && !domain.starts_with('.')
+            && !domain.ends_with('.')
+            && !domain.contains("..")
+    }
+
+    pub fn sanitize_path(path: &str) -> String {
+        // Remove characters that could break Nginx config or be used for injection
+        path.replace('"', "").replace(';', "").replace('{', "").replace('}', "")
+    }
+
     pub fn generate_server_block(
         domain: &str,
         root: &str,
         port: u16,
         php_port: Option<u16>,
     ) -> String {
+        let safe_root = Self::sanitize_path(root);
         let mut block = format!(
             r#"server {{
     listen {};
     server_name {};
-    root {};
+    root "{}";
     index index.html index.php;
 
     location / {{
         try_files $uri $uri/ =404;
     }}
 "#,
-            port, domain, root
+            port, domain, safe_root
         );
 
         if let Some(php) = php_port {
@@ -56,6 +73,10 @@ impl VhostManager {
         port: u16,
         php_port: Option<u16>,
     ) -> Result<VhostInfo, String> {
+        if !Self::is_valid_domain(domain) {
+            return Err(format!("Invalid domain name: {}", domain));
+        }
+
         std::fs::create_dir_all(vhosts_dir)
             .map_err(|e| format!("Failed to create vhosts dir: {}", e))?;
 
@@ -82,6 +103,10 @@ impl VhostManager {
     }
 
     pub fn delete_vhost(vhosts_dir: &Path, domain: &str) -> Result<(), String> {
+        if !Self::is_valid_domain(domain) {
+            return Err(format!("Invalid domain name: {}", domain));
+        }
+
         let conf_path = vhosts_dir.join(format!("{}.conf", domain));
         if conf_path.exists() {
             std::fs::remove_file(&conf_path)
@@ -122,5 +147,25 @@ impl VhostManager {
         }
 
         Ok(vhosts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_domain() {
+        assert!(VhostManager::is_valid_domain("example.com"));
+        assert!(VhostManager::is_valid_domain("test-site.local"));
+        assert!(!VhostManager::is_valid_domain("site;rm -rf /"));
+        assert!(!VhostManager::is_valid_domain(".."));
+        assert!(!VhostManager::is_valid_domain(".start"));
+    }
+
+    #[test]
+    fn test_sanitize_path() {
+        assert_eq!(VhostManager::sanitize_path("/var/www/site"), "/var/www/site");
+        assert_eq!(VhostManager::sanitize_path("/var/www/site\";"), "/var/www/site");
     }
 }

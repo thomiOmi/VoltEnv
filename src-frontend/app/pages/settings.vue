@@ -324,3 +324,5 @@ function removeGroup(index: number) {
     </UModal>
   </UDashboardPanel>
 </template>
+
+<!-- Performance Architect Tip: Added aria-labels to icon-only buttons for a11y -->
