@@ -12,13 +12,13 @@
       "identifier": "fs:default",
       "allow": [
         {
-          "path": "$APPDATA/**"
+          "path": "$APPDATA/voltenv/**"
         },
         {
           "path": "$RESOURCE/**"
         },
         {
-          "path": "$TEMP/**"
+          "path": "$TEMP/voltenv/**"
         }
       ]
     },
