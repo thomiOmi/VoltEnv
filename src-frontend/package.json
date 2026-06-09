@@ -12,7 +12,8 @@
     "postinstall": "nuxt prepare",
     "cleanup": "nuxt cleanup",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.109",
@@ -34,9 +35,15 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",
+    "@pinia/testing": "^1.0.3",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.4.11",
     "eslint": "^10.4.0",
     "eslint-plugin-format": "^2.0.1",
+    "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
+    "unplugin-auto-import": "^21.0.0",
+    "vitest": "^4.1.8",
     "vue-tsc": "^3.3.2"
   }
 }
