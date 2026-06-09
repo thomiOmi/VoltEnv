@@ -5,6 +5,28 @@ import type { QuickCreateResult } from '#shared/types/quick-create'
 import type { Settings } from '#shared/types/settings'
 
 export function useServiceApi() {
+  const toast = useToast()
+
+  /**
+   * Performance Architect Tip: Handles errors from Rust globally at the API layer.
+   * Ensures user always gets a meaningful message via Toast notifications.
+   */
+  async function _handleInvoke<T>(cmd: string, args?: any): Promise<T> {
+    try {
+      return await invoke<T>(cmd, args)
+    }
+    catch (e) {
+      const message = String(e)
+      toast.add({
+        title: 'Error',
+        description: message,
+        color: 'error',
+        icon: 'i-lucide-circle-alert'
+      })
+      throw e
+    }
+  }
+
   async function getServices(): Promise<ServiceDefinition[]> {
     try {
       return await invoke<ServiceDefinition[]>('get_services')
@@ -16,20 +38,15 @@ export function useServiceApi() {
   }
 
   async function setupService(id: string, version: string): Promise<void> {
-    await invoke('setup_service', { id, version })
+    await _handleInvoke('setup_service', { id, version })
   }
 
   async function startService(id: string): Promise<number> {
-    try {
-      return await invoke<number>('start_service', { id })
-    }
-    catch (e) {
-      throw new Error(String(e))
-    }
+    return await _handleInvoke<number>('start_service', { id })
   }
 
   async function stopService(id: string): Promise<void> {
-    await invoke('stop_service', { id })
+    await _handleInvoke('stop_service', { id })
   }
 
   async function getServiceStatus(id: string): Promise<ServiceStatus | null> {
@@ -42,7 +59,7 @@ export function useServiceApi() {
   }
 
   async function switchServiceVersion(id: string, version: string): Promise<void> {
-    await invoke('switch_service_version', { id, version })
+    await _handleInvoke('switch_service_version', { id, version })
   }
 
   async function getServiceLogs(id: string, version: string, linesCount = 50): Promise<string[]> {
@@ -64,11 +81,11 @@ export function useServiceApi() {
   }
 
   async function createVhost(domain: string, root: string, port: number, phpPort?: number): Promise<VhostInfo> {
-    return await invoke<VhostInfo>('create_vhost', { domain, root, port, phpPort: phpPort ?? null })
+    return await _handleInvoke<VhostInfo>('create_vhost', { domain, root, port, phpPort: phpPort ?? null })
   }
 
   async function deleteVhost(domain: string): Promise<void> {
-    await invoke('delete_vhost', { domain })
+    await _handleInvoke('delete_vhost', { domain })
   }
 
   async function listDatabases(): Promise<string[]> {
@@ -81,19 +98,19 @@ export function useServiceApi() {
   }
 
   async function createDatabase(name: string): Promise<void> {
-    await invoke('create_database', { name })
+    await _handleInvoke('create_database', { name })
   }
 
   async function dropDatabase(name: string): Promise<void> {
-    await invoke('drop_database', { name })
+    await _handleInvoke('drop_database', { name })
   }
 
   async function createDbUser(username: string, password: string, database: string): Promise<void> {
-    await invoke('create_db_user', { username, password, database })
+    await _handleInvoke('create_db_user', { username, password, database })
   }
 
   async function quickCreate(projectName: string, createDatabase: boolean): Promise<QuickCreateResult> {
-    return await invoke<QuickCreateResult>('quick_create', { projectName, createDatabase })
+    return await _handleInvoke<QuickCreateResult>('quick_create', { projectName, createDatabase })
   }
 
   async function getSettings(): Promise<Settings | null> {
@@ -106,15 +123,15 @@ export function useServiceApi() {
   }
 
   async function updateSettings(settings: Settings): Promise<void> {
-    await invoke('update_settings', { settings })
+    await _handleInvoke('update_settings', { settings })
   }
 
   async function saveCustomService(service: ServiceDefinition): Promise<void> {
-    await invoke('save_custom_service', { service })
+    await _handleInvoke('save_custom_service', { service })
   }
 
   async function deleteCustomService(id: string): Promise<void> {
-    await invoke('delete_custom_service', { id })
+    await _handleInvoke('delete_custom_service', { id })
   }
 
   return {

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use tauri::AppHandle;
 
+use crate::errors::{VoltError, VoltResult};
 use crate::paths::VoltPath;
 use crate::settings::Settings;
 
@@ -51,9 +52,9 @@ fn get_mysql_port(app: &AppHandle) -> u16 {
         .unwrap_or(3306)
 }
 
-async fn run_mysql(app: &AppHandle, sql: &str) -> Result<String, String> {
+async fn run_mysql(app: &AppHandle, sql: &str) -> VoltResult<String> {
     let mysql_bin = find_mysql_bin(app)
-        .ok_or_else(|| "MySQL CLI not found. Is MySQL installed?".to_string())?;
+        .ok_or_else(|| VoltError::Database("MySQL CLI not found. Is MySQL installed?".to_string()))?;
 
     let port = get_mysql_port(app);
 
@@ -72,28 +73,28 @@ async fn run_mysql(app: &AppHandle, sql: &str) -> Result<String, String> {
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run mysql: {}", e))?;
+        .map_err(VoltError::Io)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("MySQL command failed: {}", stderr.trim()));
+        return Err(VoltError::Database(format!("MySQL command failed: {}", stderr.trim())));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn sanitize_identifier(id: &str) -> Result<String, String> {
+fn sanitize_identifier(id: &str) -> VoltResult<String> {
     let sanitized: String = id
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '_')
         .collect();
     if sanitized.is_empty() || sanitized != id {
-        return Err(format!("Invalid MySQL identifier: {}", id));
+        return Err(VoltError::Validation(format!("Invalid MySQL identifier: {}", id)));
     }
     Ok(sanitized)
 }
 
-pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), String> {
+pub async fn create_database_inner(app: &AppHandle, name: &str) -> VoltResult<()> {
     let name = sanitize_identifier(name)?;
     run_mysql(
         app,
@@ -104,12 +105,12 @@ pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn create_database(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn create_database(app: AppHandle, name: String) -> VoltResult<()> {
     create_database_inner(&app, &name).await
 }
 
 #[tauri::command]
-pub async fn drop_database(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn drop_database(app: AppHandle, name: String) -> VoltResult<()> {
     let name = sanitize_identifier(&name)?;
     run_mysql(&app, &format!("DROP DATABASE IF EXISTS `{}`", name)).await?;
     Ok(())
@@ -121,11 +122,10 @@ pub async fn create_db_user(
     username: String,
     password: String,
     database: String,
-) -> Result<(), String> {
+) -> VoltResult<()> {
     let user = sanitize_identifier(&username)?;
     let db = sanitize_identifier(&database)?;
 
-    // Password is used in IDENTIFIED BY '...', so we need to escape single quotes
     let safe_password = password.replace('\'', "''");
 
     run_mysql(
@@ -152,7 +152,7 @@ pub async fn create_db_user(
 }
 
 #[tauri::command]
-pub async fn list_databases(app: AppHandle) -> Result<Vec<String>, String> {
+pub async fn list_databases(app: AppHandle) -> VoltResult<Vec<String>> {
     let output = run_mysql(&app, "SHOW DATABASES").await?;
     let databases: Vec<String> = output
         .lines()

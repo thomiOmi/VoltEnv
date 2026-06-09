@@ -70,7 +70,7 @@ async function handleSave() {
     toast.add({ title: 'Settings saved', color: 'success' })
   }
   catch (e) {
-    toast.add({ title: String(e), color: 'error' })
+    // Error is already handled by API wrapper toast
   }
 }
 
@@ -81,7 +81,7 @@ async function handleDeleteVhost(domain: string) {
     await loadVhosts()
   }
   catch (e) {
-    toast.add({ title: String(e), color: 'error' })
+    // Handled by API wrapper
   }
 }
 
@@ -92,7 +92,7 @@ async function handleDropDatabase(name: string) {
     await loadDatabases()
   }
   catch (e) {
-    toast.add({ title: String(e), color: 'error' })
+    // Handled by API wrapper
   }
 }
 

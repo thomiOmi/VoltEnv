@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use crate::errors::VoltResult;
 use crate::paths::VoltPath;
 use crate::settings::Settings;
 use crate::vhost::VhostManager;
@@ -19,7 +20,7 @@ pub async fn quick_create(
     app: AppHandle,
     project_name: String,
     create_database: bool,
-) -> Result<QuickCreateResult, String> {
+) -> VoltResult<QuickCreateResult> {
     let slug: String = project_name
         .chars()
         .map(|c| {
@@ -74,7 +75,7 @@ pub async fn quick_create(
         .or_else(|| settings.preferred_ports.get("php").copied());
 
     let vhosts_dir = VoltPath::vhosts_dir(&app);
-    VhostManager::save_vhost(&vhosts_dir, &domain, &root_path, nginx_port, php_port)?;
+    VhostManager::save_vhost(&vhosts_dir, &domain, &root_path, nginx_port, php_port).map_err(|e| e.into())?;
 
     let mut created_db = false;
     if create_database {

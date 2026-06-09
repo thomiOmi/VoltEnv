@@ -1,17 +1,18 @@
 use tauri::AppHandle;
 
+use crate::errors::{VoltError, VoltResult};
 use crate::paths::VoltPath;
 use crate::service::ServiceDefinition;
 use crate::settings::Settings;
 
 #[tauri::command]
-pub async fn get_settings(app: AppHandle) -> Result<Settings, String> {
+pub async fn get_settings(app: AppHandle) -> VoltResult<Settings> {
     Ok(Settings::load(&app))
 }
 
 #[tauri::command]
-pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
-    settings.save(&app)
+pub async fn update_settings(app: AppHandle, settings: Settings) -> VoltResult<()> {
+    settings.save(&app).map_err(VoltError::Generic)
 }
 
 #[tauri::command]
@@ -20,8 +21,8 @@ pub async fn get_service_logs(
     id: String,
     version: String,
     lines_count: usize,
-) -> Result<Vec<String>, String> {
-    crate::logging::get_service_logs(&app, &id, &version, lines_count).await
+) -> VoltResult<Vec<String>> {
+    crate::logging::get_service_logs(&app, &id, &version, lines_count).await.map_err(VoltError::Generic)
 }
 
 #[tauri::command]
@@ -35,15 +36,15 @@ pub async fn is_port_available(port: u16) -> bool {
 pub async fn save_custom_service(
     app: AppHandle,
     mut service: ServiceDefinition,
-) -> Result<(), String> {
+) -> VoltResult<()> {
     if service.id.is_empty() {
-        return Err("Service ID is required".to_string());
+        return Err(VoltError::Validation("Service ID is required".to_string()));
     }
     if service.name.is_empty() {
-        return Err("Service name is required".to_string());
+        return Err(VoltError::Validation("Service name is required".to_string()));
     }
     if service.binary_name.is_empty() {
-        return Err("Binary name is required".to_string());
+        return Err(VoltError::Validation("Binary name is required".to_string()));
     }
     if service.default_version.is_empty() {
         service.default_version = "0.0.0".to_string();
@@ -52,22 +53,22 @@ pub async fn save_custom_service(
 
     let custom_dir = VoltPath::custom_services_dir(&app);
     std::fs::create_dir_all(&custom_dir)
-        .map_err(|e| format!("Failed to create custom services dir: {}", e))?;
+        .map_err(VoltError::Io)?;
 
     let path = custom_dir.join(format!("{}.json", service.id));
     let json = serde_json::to_string_pretty(&service)
-        .map_err(|e| format!("Failed to serialize service: {}", e))?;
-    std::fs::write(&path, &json).map_err(|e| format!("Failed to write custom service: {}", e))?;
+        .map_err(|e| VoltError::Generic(format!("Failed to serialize service: {}", e)))?;
+    std::fs::write(&path, &json).map_err(VoltError::Io)?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_custom_service(app: AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_custom_service(app: AppHandle, id: String) -> VoltResult<()> {
     let path = VoltPath::custom_services_dir(&app).join(format!("{}.json", id));
     if path.exists() {
         std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete custom service: {}", e))?;
+            .map_err(VoltError::Io)?;
     }
     Ok(())
 }

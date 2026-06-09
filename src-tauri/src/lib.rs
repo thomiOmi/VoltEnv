@@ -6,6 +6,7 @@ use tauri::Manager;
 pub mod commands;
 pub mod config;
 pub mod download;
+pub mod errors;
 pub mod installer;
 pub mod logging;
 pub mod paths;
