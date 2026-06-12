@@ -143,6 +143,10 @@ export function useServiceApi() {
     }
   }
 
+  async function testMysqlConnection(username?: string, password?: string): Promise<string> {
+    return await _handleInvoke<string>('test_mysql_connection', { username: username || null, password: password || null })
+  }
+
   return {
     getServices,
     setupService,
@@ -164,5 +168,6 @@ export function useServiceApi() {
     saveCustomService,
     deleteCustomService,
     checkServiceIdAvailable,
+    testMysqlConnection,
   }
 }

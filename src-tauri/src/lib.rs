@@ -75,6 +75,7 @@ pub fn run() {
             commands::database::drop_database,
             commands::database::create_db_user,
             commands::database::list_databases,
+            commands::database::test_mysql_connection,
             commands::quick_create::quick_create,
             commands::misc::get_settings,
             commands::misc::update_settings,

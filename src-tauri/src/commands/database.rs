@@ -180,3 +180,42 @@ mod tests {
         assert!(sanitize_identifier("db name").is_err());
     }
 }
+
+#[tauri::command]
+pub async fn test_mysql_connection(
+    app: AppHandle,
+    username: Option<String>,
+    password: Option<String>,
+) -> VoltResult<String> {
+    let user = username.unwrap_or_else(|| "root".to_string());
+    let pass = password.unwrap_or_default();
+
+    // Sanitize user for the CLI command
+    let safe_user = sanitize_identifier(&user)?;
+    let safe_pass = pass.replace('\'', "''");
+
+    let mysql_bin = find_mysql_bin(&app)
+        .ok_or_else(|| VoltError::Database("MySQL CLI not found".to_string()))?;
+    let port = get_mysql_port(&app);
+
+    let mut cmd = tokio::process::Command::new(&mysql_bin);
+    cmd.args([
+        "-u", &safe_user,
+        "-h", "127.0.0.1",
+        "-P", &port.to_string(),
+        "-e", "SELECT 1",
+    ]);
+
+    if !safe_pass.is_empty() {
+        cmd.arg(format!("--password={}", pass)); // Use raw pass for the CLI arg
+    }
+
+    let output = cmd.output().await.map_err(VoltError::Io)?;
+
+    if output.status.success() {
+        Ok("Connection successful".to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(VoltError::Database(format!("Connection failed: {}", stderr.trim())))
+    }
+}

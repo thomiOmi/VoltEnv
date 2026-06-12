@@ -1,19 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
+import { setActivePinia, createPinia, defineStore } from 'pinia'
+import { ref, computed } from 'vue'
 import { useServicesStore } from '../services'
 
-// Mocks
+// Mock globals for Vitest
+(global as any).defineStore = defineStore;
+(global as any).ref = ref;
+(global as any).computed = computed;
+
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {}))
 }))
 
-// We need to provide useServiceApi and useLogManagerStore because they are auto-imported in Nuxt
-import { useLogManagerStore } from '../logManager'
-(global as any).useLogManagerStore = useLogManagerStore;
+// Mock useLogManagerStore
+const mockRemoveServiceLogs = vi.fn()
+;(global as any).useLogManagerStore = () => ({
+  removeServiceLogs: mockRemoveServiceLogs
+})
 
-(global as any).useServiceApi = vi.fn(() => ({
+;(global as any).useServiceApi = vi.fn(() => ({
   getServices: vi.fn(() => Promise.resolve([
-    { id: 'nginx', name: 'Nginx', port: 8080, defaultVersion: '1.26.2' }
+    { id: 'nginx', name: 'Nginx', port: 8080, defaultVersion: '1.26.2' },
+    { id: 'mysql', name: 'MySQL', port: 3306, defaultVersion: '8.0.35' }
   ])),
   setupService: vi.fn(),
   startService: vi.fn(),
@@ -30,7 +38,7 @@ describe('services store', () => {
     const store = useServicesStore()
     await store.fetchDefinitions()
 
-    expect(store.allDefinitions.length).toBe(1)
-    expect(store.getDefinition('nginx')).toBeDefined()
+    expect(store.allDefinitions.length).toBe(2)
+    expect(store.getDefinition('mysql')).toBeDefined()
   })
 })
