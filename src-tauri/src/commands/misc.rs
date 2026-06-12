@@ -72,3 +72,9 @@ pub async fn delete_custom_service(app: AppHandle, id: String) -> VoltResult<()>
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn check_service_id_available(app: AppHandle, id: String) -> VoltResult<bool> {
+    let registry = crate::service::ServiceRegistry::load_all(&app);
+    Ok(registry.get(&id).is_none())
+}

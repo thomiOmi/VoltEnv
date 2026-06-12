@@ -134,6 +134,15 @@ export function useServiceApi() {
     await _handleInvoke('delete_custom_service', { id })
   }
 
+  async function checkServiceIdAvailable(id: string): Promise<boolean> {
+    try {
+      return await invoke<boolean>('check_service_id_available', { id })
+    }
+    catch {
+      return false
+    }
+  }
+
   return {
     getServices,
     setupService,
@@ -154,5 +163,6 @@ export function useServiceApi() {
     updateSettings,
     saveCustomService,
     deleteCustomService,
+    checkServiceIdAvailable,
   }
 }

@@ -82,6 +82,7 @@ pub fn run() {
             commands::misc::is_port_available,
             commands::misc::save_custom_service,
             commands::misc::delete_custom_service,
+            commands::misc::check_service_id_available,
         ])
         .manage(process::ServiceProcesses::new())
         .setup(|app| {
