@@ -78,3 +78,10 @@ mod tests {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceUsage {
+    pub cpu: f32,
+    pub memory: u64,
+}

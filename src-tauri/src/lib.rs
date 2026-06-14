@@ -84,6 +84,7 @@ pub fn run() {
             commands::misc::save_custom_service,
             commands::misc::delete_custom_service,
             commands::misc::check_service_id_available,
+            commands::misc::get_resource_usage,
         ])
         .manage(process::ServiceProcesses::new())
         .setup(|app| {

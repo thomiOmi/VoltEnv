@@ -30,3 +30,8 @@ export interface ServiceStatus {
   status: 'running' | 'stopped' | 'starting' | 'error'
   port: number
 }
+
+export interface ResourceUsage {
+  cpu: number
+  memory: number // in bytes
+}

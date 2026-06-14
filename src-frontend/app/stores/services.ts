@@ -1,12 +1,13 @@
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useLogManagerStore } from './logManager'
-import type { ServiceDefinition, ServiceStatus } from '#shared/types/service'
+import type { ServiceDefinition, ServiceStatus, ResourceUsage } from '#shared/types/service'
 import type { DownloadProgressPayload, InstallProgressPayload, ServiceStatusChangedPayload } from '#shared/types/events'
 
 export const useServicesStore = defineStore('services', () => {
   const definitions = ref<Map<string, ServiceDefinition>>(new Map())
   const statuses = ref<Map<string, ServiceStatus>>(new Map())
+  const resourceUsage = ref<Map<string, ResourceUsage>>(new Map())
   const loading = ref<Set<string>>(new Set())
   const installed = ref<Set<string>>(new Set())
   const downloadProgress = ref<Record<string, number>>({})
@@ -15,8 +16,9 @@ export const useServicesStore = defineStore('services', () => {
   let _unlistenStatus: UnlistenFn | null = null
   let _unlistenDownload: UnlistenFn | null = null
   let _unlistenInstall: UnlistenFn | null = null
+  let _pollingInterval: any = null
 
-  const { getServices } = useServiceApi()
+  const { getServices, getResourceUsage } = useServiceApi()
   const logManager = useLogManagerStore()
 
   const allDefinitions = computed(() => Array.from(definitions.value.values()))
@@ -27,6 +29,10 @@ export const useServicesStore = defineStore('services', () => {
 
   function getStatus(id: string): ServiceStatus | undefined {
     return statuses.value.get(id)
+  }
+
+  function getUsage(id: string): ResourceUsage | undefined {
+    return resourceUsage.value.get(id)
   }
 
   function isRunning(id: string): boolean {
@@ -78,12 +84,9 @@ export const useServicesStore = defineStore('services', () => {
       port: port ?? existing.port,
     })
 
-    /**
-     * Performance Architect Tip: When a service stops, clear its log from memory.
-     * User can still view persisted logs from the backend via 'get_service_logs' if needed.
-     */
     if (status === 'stopped') {
       logManager.removeServiceLogs(id, version ?? existing.version)
+      resourceUsage.value.delete(id)
     }
   }
 
@@ -111,12 +114,37 @@ export const useServicesStore = defineStore('services', () => {
       const { id, progress } = event.payload
       installProgress.value[id] = progress
     })
+
+    /**
+     * Performance Architect Tip: Polling for resource usage only for running services.
+     * Keeps the overhead low while providing real-time visibility.
+     */
+    if (!_pollingInterval) {
+      _pollingInterval = setInterval(async () => {
+        const runningIds = Array.from(statuses.value.values())
+          .filter(s => s.status === 'running')
+          .map(s => s.id)
+
+        for (const id of runningIds) {
+          const usage = await getResourceUsage(id)
+          if (usage) {
+            resourceUsage.value.set(id, usage)
+          } else {
+            resourceUsage.value.delete(id)
+          }
+        }
+      }, 2500)
+    }
   }
 
   function disposeListeners() {
     _unlistenStatus?.()
     _unlistenDownload?.()
     _unlistenInstall?.()
+    if (_pollingInterval) {
+      clearInterval(_pollingInterval)
+      _pollingInterval = null
+    }
   }
 
   async function setupService(id: string, version: string) {
@@ -161,6 +189,7 @@ export const useServicesStore = defineStore('services', () => {
   return {
     definitions,
     statuses,
+    resourceUsage,
     loading,
     installed,
     downloadProgress,
@@ -168,6 +197,7 @@ export const useServicesStore = defineStore('services', () => {
     allDefinitions,
     getDefinition,
     getStatus,
+    getUsage,
     isRunning,
     isStarting,
     isStopped,

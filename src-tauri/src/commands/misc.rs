@@ -78,3 +78,55 @@ pub async fn check_service_id_available(app: AppHandle, id: String) -> VoltResul
     let registry = crate::service::ServiceRegistry::load_all(&app);
     Ok(registry.get(&id).is_none())
 }
+
+#[tauri::command]
+pub async fn get_resource_usage(
+    state: State<'_, ServiceProcesses>,
+    id: String,
+) -> VoltResult<Option<ResourceUsage>> {
+    let instances = state.instances.lock().await;
+
+    // Find the running instance for this service ID
+    let instance = instances.values()
+        .find(|s| {
+            // The key is "id:version", so we check the version metadata if needed
+            // But since we store the PID in InstanceState, we can just match by the version stored there
+            // Actually, we need to know WHICH version is running.
+            // The safest is to iterate and match the ID.
+            instances.keys().any(|k| k.starts_with(&format!("{}:", id)))
+        });
+
+    // Better approach: filter by key
+    let keys: Vec<String> = instances.keys()
+        .filter(|k| k.starts_with(&format!("{}:", id)))
+        .cloned()
+        .collect();
+
+    if keys.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(instance) = instances.get(&keys[0]) {
+        let pid = instance.pid;
+        drop(instances); // Release lock before sysinfo work
+
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+        let mut sys = sysinfo::System::new();
+        let pid_sys = Pid::from(pid as usize);
+
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[pid_sys]),
+            true,
+            ProcessRefreshKind::everything()
+        );
+
+        if let Some(proc) = sys.process(pid_sys) {
+            return Ok(Some(ResourceUsage {
+                cpu: proc.cpu_usage(),
+                memory: proc.memory(),
+            }));
+        }
+    }
+
+    Ok(None)
+}

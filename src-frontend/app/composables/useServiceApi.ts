@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { ServiceDefinition, ServiceStatus } from '#shared/types/service'
+import type { ServiceDefinition, ServiceStatus, ResourceUsage } from '#shared/types/service'
 import type { VhostInfo } from '#shared/types/vhost'
 import type { QuickCreateResult } from '#shared/types/quick-create'
 import type { Settings } from '#shared/types/settings'
@@ -147,6 +147,15 @@ export function useServiceApi() {
     return await _handleInvoke<string>('test_mysql_connection', { username: username || null, password: password || null })
   }
 
+  async function getResourceUsage(id: string): Promise<ResourceUsage | null> {
+    try {
+      return await invoke<ResourceUsage | null>('get_resource_usage', { id })
+    }
+    catch {
+      return null
+    }
+  }
+
   return {
     getServices,
     setupService,
@@ -169,5 +178,6 @@ export function useServiceApi() {
     deleteCustomService,
     checkServiceIdAvailable,
     testMysqlConnection,
+    getResourceUsage,
   }
 }

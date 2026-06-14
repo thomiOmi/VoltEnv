@@ -4,6 +4,15 @@ import type { ServiceDefinition } from '#shared/types/service'
 
 const servicesStore = useServicesStore()
 
+function formatMemory(bytes: number) {
+  if (!bytes) return '0 MB'
+  const mb = bytes / (1024 * 1024)
+  if (mb > 1024) {
+    return `${(mb / 1024).toFixed(1)} GB`
+  }
+  return `${mb.toFixed(0)} MB`
+}
+
 const columns = [
   {
     accessorKey: 'name',
@@ -19,8 +28,27 @@ const columns = [
     header: 'Port',
     cell: ({ row }: { row: { original: ServiceDefinition } }) => {
       const status = servicesStore.getStatus(row.original.id)
-      return h('span', {}, status?.port ? String(status.port) : String(row.original.port))
+      return h('span', { class: 'font-mono text-xs' }, status?.port ? String(status.port) : String(row.original.port))
     },
+  },
+  {
+    id: 'resources',
+    header: 'Usage (CPU / RAM)',
+    cell: ({ row }: { row: { original: ServiceDefinition } }) => {
+      const usage = servicesStore.getUsage(row.original.id)
+      if (!usage) return h('span', { class: 'text-dimmed text-xs' }, '-')
+
+      return h('div', { class: 'flex items-center gap-3 font-mono text-[11px]' }, [
+        h('div', { class: 'flex items-center gap-1' }, [
+          h('span', { class: 'text-muted' }, 'CPU:'),
+          h('span', { class: usage.cpu > 50 ? 'text-warning' : 'text-default' }, `${usage.cpu.toFixed(1)}%`)
+        ]),
+        h('div', { class: 'flex items-center gap-1' }, [
+          h('span', { class: 'text-muted' }, 'RAM:'),
+          h('span', {}, formatMemory(usage.memory))
+        ])
+      ])
+    }
   },
   {
     accessorKey: 'status',
@@ -30,14 +58,8 @@ const columns = [
       const s = status?.status ?? 'stopped'
       const color = s === 'running' ? 'success' : s === 'starting' ? 'warning' : 'neutral'
       const UBadge = resolveComponent('UBadge')
-      return h(UBadge, { color, variant: 'subtle', size: 'sm' }, { default: () => s })
+      return h(UBadge, { color, variant: 'subtle', size: 'sm', class: 'capitalize' }, { default: () => s })
     },
-  },
-  {
-    accessorKey: 'kind',
-    header: 'Type',
-    cell: ({ row }: { row: { original: ServiceDefinition } }) =>
-      h('span', { class: 'text-muted text-sm' }, row.original.kind),
   },
   {
     id: 'actions',
@@ -79,7 +101,7 @@ const data = computed(() => Array.from(servicesStore.definitions.values()))
     :columns="columns"
     class="flex-1"
     :ui="{
-      th: 'text-default font-medium',
+      th: 'text-default font-medium text-xs',
       td: 'py-3',
     }"
   >
