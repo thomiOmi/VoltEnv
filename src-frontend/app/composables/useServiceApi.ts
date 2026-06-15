@@ -156,6 +156,14 @@ export function useServiceApi() {
     }
   }
 
+  async function exportConfiguration(): Promise<string> {
+    return await _handleInvoke<string>('export_configuration')
+  }
+
+  async function importConfiguration(jsonContent: string): Promise<void> {
+    await _handleInvoke('import_configuration', { jsonContent })
+  }
+
   return {
     getServices,
     setupService,
@@ -179,5 +187,7 @@ export function useServiceApi() {
     checkServiceIdAvailable,
     testMysqlConnection,
     getResourceUsage,
+    exportConfiguration,
+    importConfiguration,
   }
 }

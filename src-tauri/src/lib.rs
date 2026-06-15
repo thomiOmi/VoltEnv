@@ -2,6 +2,8 @@
 
 use std::sync::OnceLock;
 use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
 pub mod commands;
 pub mod config;
@@ -85,10 +87,53 @@ pub fn run() {
             commands::misc::delete_custom_service,
             commands::misc::check_service_id_available,
             commands::misc::get_resource_usage,
+            commands::misc::export_configuration,
+            commands::misc::import_configuration,
         ])
         .manage(process::ServiceProcesses::new())
         .setup(|app| {
             let _ = paths::VoltPath::ensure_all_dirs(app.handle());
+
+            // 1. Tray Menu
+            let quit_i = MenuItem::with_id(app, "quit", "Quit VoltEnv", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => {
+                        std::process::exit(0);
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // 2. Window Closing Behavior (Hide to Tray)
+            let window = app.get_webview_window("main").unwrap();
+            let win_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let _ = win_clone.hide();
+                    api.prevent_close();
+                }
+            });
 
             // Restore env junctions for installed services
             let registry = service::ServiceRegistry::load_all(app.handle());

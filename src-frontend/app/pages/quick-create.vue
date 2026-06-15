@@ -68,7 +68,7 @@ function reset() {
           </UFormField>
 
           <UFormField label="Options" class="mt-4">
-            <UToggle v-model="createDatabase" label="Create MySQL database" />
+            <USwitch v-model="createDatabase" label="Create MySQL database" />
           </UFormField>
 
           <div class="flex items-center gap-2 mt-6">
