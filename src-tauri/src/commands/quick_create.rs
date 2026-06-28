@@ -1,8 +1,10 @@
 use tauri::AppHandle;
+use std::fs;
 
 use crate::paths::VoltPath;
 use crate::settings::Settings;
 use crate::vhost::VhostManager;
+use crate::vhost::ssl::SslManager;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +34,7 @@ pub async fn quick_create(
         .collect();
     let slug_lower = slug.to_lowercase();
 
-    let domain = format!("{}.test", slug_lower);
+    let domain = format!("{}.localhost", slug_lower);
     let www_dir = VoltPath::www_dir(&app);
     let project_dir = www_dir.join(&slug_lower);
     let root_path = project_dir.to_string_lossy().to_string();
@@ -40,24 +42,16 @@ pub async fn quick_create(
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
-    let index_html = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{}</title>
-</head>
-<body>
-    <h1>{} — Ready</h1>
-    <p>Project created by VoltEnv.</p>
-</body>
-</html>
+    let index_php = format!(
+        r#"<?php
+echo "<h1>{} — Ready</h1>";
+echo "<p>Project created by VoltEnv.</p>";
+phpinfo();
 "#,
-        project_name, project_name
+        project_name
     );
-    std::fs::write(project_dir.join("index.html"), &index_html)
-        .map_err(|e| format!("Failed to write index.html: {}", e))?;
+    std::fs::write(project_dir.join("index.php"), &index_php)
+        .map_err(|e| format!("Failed to write index.php: {}", e))?;
 
     let settings = Settings::load(&app);
     let nginx_port = settings
@@ -65,7 +59,7 @@ pub async fn quick_create(
         .get("nginx")
         .copied()
         .or_else(|| settings.preferred_ports.get("nginx").copied())
-        .unwrap_or(8080);
+        .unwrap_or(80); // Default to 80 for production-like feel
 
     let php_port = settings
         .resolved_ports
@@ -73,8 +67,43 @@ pub async fn quick_create(
         .copied()
         .or_else(|| settings.preferred_ports.get("php").copied());
 
+    // Auto-generate SSL for quick create
+    let ssl_dir = VoltPath::ssl_dir(&app);
+    let _ = fs::create_dir_all(&ssl_dir);
+
+    let ca_cert_path = ssl_dir.join("rootCA.pem");
+    let ca_key_path = ssl_dir.join("rootCA-key.pem");
+
+    let ssl_paths = if !ca_cert_path.exists() || !ca_key_path.exists() {
+        if let Ok((ca_cert, ca_key)) = SslManager::generate_ca() {
+            let _ = fs::write(&ca_cert_path, ca_cert);
+            let _ = fs::write(&ca_key_path, ca_key);
+            let _ = SslManager::install_ca(&ca_cert_path);
+        }
+        None
+    } else {
+        let ca_cert = fs::read_to_string(&ca_cert_path).unwrap_or_default();
+        let ca_key = fs::read_to_string(&ca_key_path).unwrap_or_default();
+        if let Ok((cert, key)) = SslManager::generate_cert(&ca_cert, &ca_key, &domain) {
+            let cert_path = ssl_dir.join(format!("{}.crt", domain));
+            let key_path = ssl_dir.join(format!("{}.key", domain));
+            let _ = fs::write(&cert_path, cert);
+            let _ = fs::write(&key_path, key);
+            Some((cert_path, key_path))
+        } else {
+            None
+        }
+    };
+
     let vhosts_dir = VoltPath::vhosts_dir(&app);
-    VhostManager::save_vhost(&vhosts_dir, &domain, &root_path, nginx_port, php_port)?;
+    VhostManager::save_vhost(
+        &vhosts_dir,
+        &domain,
+        &root_path,
+        nginx_port,
+        php_port,
+        ssl_paths.as_ref().map(|(c, k)| (c.as_path(), k.as_path()))
+    )?;
 
     let mut created_db = false;
     if create_database {

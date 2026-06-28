@@ -31,7 +31,7 @@ async function handleCreate() {
     result.value = await api.quickCreate(name, createDatabase.value)
     toast.add({
       title: `Project "${name}" created`,
-      description: `Visit http://${name.toLocaleLowerCase().replace(/[^a-z0-9_-]/g, '-')}.test`,
+      description: `Visit https://${name.toLocaleLowerCase().replace(/[^a-z0-9_-]/g, '-')}.test`,
       color: 'success',
     })
   }

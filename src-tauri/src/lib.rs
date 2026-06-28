@@ -14,6 +14,7 @@ pub mod service;
 pub mod settings;
 pub mod vhost;
 pub mod watcher;
+pub mod utils;
 
 pub fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -81,6 +82,9 @@ pub fn run() {
             commands::misc::is_port_available,
             commands::misc::save_custom_service,
             commands::misc::delete_custom_service,
+            commands::service::get_php_extensions,
+            commands::service::toggle_php_extension,
+            commands::misc::run_composer_command,
         ])
         .manage(process::ServiceProcesses::new())
         .setup(|app| {

@@ -1,3 +1,5 @@
+pub mod ssl;
+pub mod hosts;
 use std::path::Path;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7,6 +9,7 @@ pub struct VhostInfo {
     pub root: String,
     pub port: u16,
     pub php_port: Option<u16>,
+    pub ssl: bool,
 }
 
 pub struct VhostManager;
@@ -17,20 +20,24 @@ impl VhostManager {
         root: &str,
         port: u16,
         php_port: Option<u16>,
+        ssl_config: Option<(&Path, &Path)>,
     ) -> String {
-        let mut block = format!(
+        let mut block = String::new();
+
+        // HTTP Server
+        block.push_str(&format!(
             r#"server {{
     listen {};
     server_name {};
-    root {};
+    root "{}";
     index index.html index.php;
 
     location / {{
         try_files $uri $uri/ =404;
     }}
 "#,
-            port, domain, root
-        );
+            port, domain, root.replace("\", "/")
+        ));
 
         if let Some(php) = php_port {
             block.push_str(&format!(
@@ -46,6 +53,45 @@ impl VhostManager {
         }
 
         block.push_str("}\n");
+
+        // HTTPS Server
+        if let Some((cert, key)) = ssl_config {
+            block.push_str(&format!(
+                r#"
+server {{
+    listen 443 ssl;
+    server_name {};
+    root "{}";
+    index index.html index.php;
+
+    ssl_certificate "{}";
+    ssl_certificate_key "{}";
+
+    location / {{
+        try_files $uri $uri/ =404;
+    }}
+"#,
+                domain,
+                root.replace("\", "/"),
+                cert.to_string_lossy().replace("\", "/"),
+                key.to_string_lossy().replace("\", "/")
+            ));
+
+            if let Some(php) = php_port {
+                block.push_str(&format!(
+                    r#"
+    location ~ \.php$ {{
+        fastcgi_pass 127.0.0.1:{};
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+"#,
+                    php
+                ));
+            }
+            block.push_str("}\n");
+        }
+
         block
     }
 
@@ -55,11 +101,12 @@ impl VhostManager {
         root: &str,
         port: u16,
         php_port: Option<u16>,
+        ssl_paths: Option<(&Path, &Path)>,
     ) -> Result<VhostInfo, String> {
         std::fs::create_dir_all(vhosts_dir)
             .map_err(|e| format!("Failed to create vhosts dir: {}", e))?;
 
-        let content = Self::generate_server_block(domain, root, port, php_port);
+        let content = Self::generate_server_block(domain, root, port, php_port, ssl_paths);
 
         let conf_path = vhosts_dir.join(format!("{}.conf", domain));
         std::fs::write(&conf_path, &content)
@@ -70,6 +117,7 @@ impl VhostManager {
             root: root.to_string(),
             port,
             php_port,
+            ssl: ssl_paths.is_some(),
         };
 
         let meta_path = vhosts_dir.join(format!("{}.json", domain));

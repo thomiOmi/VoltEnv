@@ -63,8 +63,8 @@ export function useServiceApi() {
     }
   }
 
-  async function createVhost(domain: string, root: string, port: number, phpPort?: number): Promise<VhostInfo> {
-    return await invoke<VhostInfo>('create_vhost', { domain, root, port, phpPort: phpPort ?? null })
+  async function createVhost(domain: string, root: string, port: number, phpPort?: number, enableSsl = true): Promise<VhostInfo> {
+    return await invoke<VhostInfo>('create_vhost', { domain, root, port, phpPort: phpPort ?? null, enableSsl })
   }
 
   async function deleteVhost(domain: string): Promise<void> {
@@ -117,6 +117,23 @@ export function useServiceApi() {
     await invoke('delete_custom_service', { id })
   }
 
+  async function getPhpExtensions(version: string): Promise<[string, boolean][]> {
+    try {
+      return await invoke<[string, boolean][]>('get_php_extensions', { version })
+    }
+    catch {
+      return []
+    }
+  }
+
+  async function togglePhpExtension(version: string, extension: string, enable: boolean): Promise<void> {
+    await invoke('toggle_php_extension', { version, extension, enable })
+  }
+
+  async function runComposerCommand(projectPath: string, args: string[]): Promise<string> {
+    return await invoke<string>('run_composer_command', { projectPath, args })
+  }
+
   return {
     getServices,
     setupService,
@@ -137,5 +154,8 @@ export function useServiceApi() {
     updateSettings,
     saveCustomService,
     deleteCustomService,
+    getPhpExtensions,
+    togglePhpExtension,
+    runComposerCommand,
   }
 }

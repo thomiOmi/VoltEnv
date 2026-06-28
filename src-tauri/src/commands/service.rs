@@ -372,3 +372,15 @@ pub async fn switch_service_version(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_php_extensions(app: AppHandle, version: String) -> Result<Vec<(String, bool)>, String> {
+    let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
+    crate::service::php_ini::PhpIniManager::get_extensions(&config_path)
+}
+
+#[tauri::command]
+pub async fn toggle_php_extension(app: AppHandle, version: String, extension: String, enable: bool) -> Result<(), String> {
+    let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
+    crate::service::php_ini::PhpIniManager::toggle_extension(&config_path, &extension, enable)
+}

@@ -101,6 +101,11 @@ impl VoltPath {
     }
 
     pub fn vhosts_dir(app: &AppHandle) -> PathBuf {
+    pub fn ssl_dir(app: &AppHandle) -> PathBuf {
+        let mut path = Self::root(app);
+        path.push("ssl");
+        path
+    }
         let mut path = Self::root(app);
         path.push("vhosts");
         path
@@ -158,6 +163,11 @@ impl VoltPath {
             Self::config_dir(app),
             Self::backups_dir(app),
             Self::vhosts_dir(app),
+    pub fn ssl_dir(app: &AppHandle) -> PathBuf {
+        let mut path = Self::root(app);
+        path.push("ssl");
+        path
+    }
             Self::www_dir(app),
             Self::custom_services_dir(app),
             Self::builtin_overrides_dir(app),
