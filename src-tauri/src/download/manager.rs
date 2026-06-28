@@ -1,4 +1,5 @@
 use crate::http_client;
+use crate::utils::{VoltResult, VoltError};
 use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -12,30 +13,24 @@ impl DownloadManager {
         id: &str,
         url: &str,
         dest_path: &Path,
-    ) -> Result<(), String> {
+    ) -> VoltResult<()> {
         let response = http_client()
             .get(url)
             .send()
-            .await
-            .map_err(|e| format!("Download failed: {}", e))?;
+            .await?;
 
         let total_size = response.content_length().unwrap_or(0);
         let part_path = part_path_for(dest_path);
-        let mut temp_file = tokio::fs::File::create(&part_path)
-            .await
-            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+        let mut temp_file = tokio::fs::File::create(&part_path).await?;
 
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = 0;
         let mut last_emitted_progress: u8 = 0;
 
-        let loop_result: Result<(), String> = async {
+        let loop_result: VoltResult<()> = async {
             while let Some(chunk_result) = stream.next().await {
-                let chunk = chunk_result.map_err(|e| format!("Stream error: {}", e))?;
-                temp_file
-                    .write_all(&chunk)
-                    .await
-                    .map_err(|e| format!("Write error: {}", e))?;
+                let chunk = chunk_result?;
+                temp_file.write_all(&chunk).await?;
                 downloaded += chunk.len() as u64;
 
                 if total_size > 0 {
@@ -58,14 +53,9 @@ impl DownloadManager {
             return Err(e);
         }
 
-        temp_file
-            .flush()
-            .await
-            .map_err(|e| format!("Failed to flush: {}", e))?;
+        temp_file.flush().await?;
 
-        tokio::fs::rename(&part_path, dest_path)
-            .await
-            .map_err(|e| format!("Failed to finalize: {}", e))?;
+        tokio::fs::rename(&part_path, dest_path).await?;
 
         let _ = app.emit(
             "download-progress",

@@ -134,6 +134,10 @@ export function useServiceApi() {
     return await invoke<string>('run_composer_command', { projectPath, args })
   }
 
+  async function runSelfDiagnostic(): Promise<any> {
+    return await invoke('run_self_diagnostic')
+  }
+
   return {
     getServices,
     setupService,
@@ -157,5 +161,6 @@ export function useServiceApi() {
     getPhpExtensions,
     togglePhpExtension,
     runComposerCommand,
+    runSelfDiagnostic,
   }
 }

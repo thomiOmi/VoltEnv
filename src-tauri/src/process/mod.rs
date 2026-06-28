@@ -4,12 +4,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::Mutex;
+use crate::utils::{VoltResult, VoltError};
 
 #[derive(Clone, Debug)]
 pub struct InstanceState {
     pub pid: u32,
     pub port: u16,
     pub version: String,
+    pub bin_path: String,
+    pub cwd: String,
+    pub args: Vec<String>,
+    pub manual_stop: bool,
+    pub restart_count: u32,
 }
 
 pub struct ServiceProcesses {
@@ -23,6 +29,10 @@ impl ServiceProcesses {
         }
     }
 
+    async fn is_port_available(port: u16) -> bool {
+        tokio::net::TcpListener::bind(("127.0.0.1", port)).await.is_ok()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn start(
         &self,
@@ -33,7 +43,11 @@ impl ServiceProcesses {
         cwd: &str,
         args: &[String],
         port: u16,
-    ) -> Result<u32, String> {
+    ) -> VoltResult<u32> {
+        if !Self::is_port_available(port).await {
+            return Err(VoltError::Service(format!("Port {} is already in use", port)));
+        }
+
         let mut cmd = tokio::process::Command::new(bin_path);
         cmd.args(args)
             .current_dir(cwd)
@@ -47,21 +61,33 @@ impl ServiceProcesses {
             format!("{}{}{}", bin_dir.display(), crate::path_sep(), current_path),
         );
 
-        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
-        let pid = child.id().ok_or("Failed to get PID")?;
+        let mut child = cmd.spawn().map_err(|e| VoltError::Process(format!("Failed to spawn {}: {}", id, e)))?;
+        let pid = child.id().ok_or_else(|| VoltError::Process("Failed to get PID".to_string()))?;
+
+        let key = format!("{}:{}", id, version);
+
+        let restart_count = {
+            let map = self.instances.lock().await;
+            map.get(&key).map(|i| i.restart_count).unwrap_or(0)
+        };
 
         self.instances.lock().await.insert(
-            format!("{}:{}", id, version),
+            key.clone(),
             InstanceState {
                 pid,
                 port,
                 version: version.to_string(),
+                bin_path: bin_path.to_string(),
+                cwd: cwd.to_string(),
+                args: args.to_vec(),
+                manual_stop: false,
+                restart_count,
             },
         );
 
         let _ = app.emit(
             "service-status-changed",
-            serde_json::json!({ "id": id, "status": "running", "version": version }),
+            serde_json::json!({ "id": id, "status": "running", "version": version, "port": port }),
         );
 
         let stdout = child.stdout.take();
@@ -96,20 +122,58 @@ impl ServiceProcesses {
 
         tokio::spawn(async move {
             let _ = child.wait().await;
-            instances
-                .lock()
-                .await
-                .remove(&format!("{}:{}", exit_id, exit_ver));
-            let _ = app_exit.emit(
-                "service-status-changed",
-                serde_json::json!({ "id": exit_id, "status": "stopped", "version": exit_ver }),
-            );
+
+            let (was_manual, should_restart, metadata) = {
+                let mut map = instances.lock().await;
+                if let Some(instance) = map.get(&key) {
+                    let was_manual = instance.manual_stop;
+                    let should_restart = !was_manual && instance.restart_count < 3;
+                    let mut meta = instance.clone();
+                    if should_restart {
+                        meta.restart_count += 1;
+                        // Keep instance in map for restart logic
+                        map.insert(key.clone(), meta.clone());
+                        (was_manual, should_restart, Some(meta))
+                    } else {
+                        map.remove(&key);
+                        (was_manual, false, None)
+                    }
+                } else {
+                    (true, false, None)
+                }
+            };
+
+            if should_restart {
+                if let Some(meta) = metadata {
+                    eprintln!("[voltenv] Service {} crashed. Attempting restart {}/3...", exit_id, meta.restart_count);
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                    let state = app_exit.state::<ServiceProcesses>();
+                    let _ = state.start(
+                        &app_exit,
+                        &exit_id,
+                        &exit_ver,
+                        &meta.bin_path,
+                        &meta.cwd,
+                        &meta.args,
+                        meta.port
+                    ).await;
+                    return;
+                }
+            }
+
+            if !was_manual {
+                let _ = app_exit.emit(
+                    "service-status-changed",
+                    serde_json::json!({ "id": exit_id, "status": "stopped", "version": exit_ver }),
+                );
+            }
         });
 
         Ok(pid)
     }
 
-    pub async fn stop_all_by_id(&self, id: &str) -> Result<(), String> {
+    pub async fn stop_all_by_id(&self, id: &str) -> VoltResult<()> {
         let keys: Vec<String> = {
             let map = self.instances.lock().await;
             map.keys()
@@ -120,8 +184,13 @@ impl ServiceProcesses {
 
         for key in keys {
             let pid = {
-                let map = self.instances.lock().await;
-                map.get(&key).map(|s| s.pid)
+                let mut map = self.instances.lock().await;
+                if let Some(instance) = map.get_mut(&key) {
+                    instance.manual_stop = true;
+                    Some(instance.pid)
+                } else {
+                    None
+                }
             };
 
             if let Some(pid) = pid {

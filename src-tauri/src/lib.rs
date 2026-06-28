@@ -2,6 +2,7 @@
 
 use std::sync::OnceLock;
 use tauri::Manager;
+use tauri::Emitter;
 
 pub mod commands;
 pub mod config;
@@ -85,6 +86,7 @@ pub fn run() {
             commands::service::get_php_extensions,
             commands::service::toggle_php_extension,
             commands::misc::run_composer_command,
+            commands::misc::run_self_diagnostic,
         ])
         .manage(process::ServiceProcesses::new())
         .setup(|app| {
@@ -123,6 +125,13 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // By default hide to tray on close
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

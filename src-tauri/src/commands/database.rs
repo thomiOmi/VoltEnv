@@ -3,26 +3,24 @@ use tauri::AppHandle;
 
 use crate::paths::VoltPath;
 use crate::settings::Settings;
+use crate::utils::{VoltResult, VoltError};
 
 fn find_mysql_bin(app: &AppHandle) -> Option<PathBuf> {
     let settings = Settings::load(app);
-    let version = settings.preferred_ports.get("mysql").and_then(|_| {
+    let version = settings.active_versions.get("mysql").cloned().or_else(|| {
         let registry = crate::service::ServiceRegistry::load_all(app);
         registry.get("mysql").map(|def| def.default_version.clone())
     });
 
     if let Some(ver) = version {
-        let service_bin = VoltPath::service_dir(app, "mysql", &ver)
-            .join("bin")
-            .join("mysql.exe");
-        if service_bin.exists() {
-            return Some(service_bin);
-        }
-        let service_bin_exe = VoltPath::service_dir(app, "mysql", &ver)
-            .join("bin")
-            .join("mysql");
-        if service_bin_exe.exists() {
-            return Some(service_bin_exe);
+        let bin_names = ["mysql.exe", "mysql"];
+        for name in bin_names {
+            let service_bin = VoltPath::service_dir(app, "mysql", &ver)
+                .join("bin")
+                .join(name);
+            if service_bin.exists() {
+                return Some(service_bin);
+            }
         }
     }
 
@@ -51,9 +49,9 @@ fn get_mysql_port(app: &AppHandle) -> u16 {
         .unwrap_or(3306)
 }
 
-async fn run_mysql(app: &AppHandle, sql: &str) -> Result<String, String> {
+async fn run_mysql(app: &AppHandle, sql: &str) -> VoltResult<String> {
     let mysql_bin = find_mysql_bin(app)
-        .ok_or_else(|| "MySQL CLI not found. Is MySQL installed?".to_string())?;
+        .ok_or_else(|| VoltError::Service("MySQL CLI not found. Is MySQL installed?".to_string()))?;
 
     let port = get_mysql_port(app);
 
@@ -72,23 +70,23 @@ async fn run_mysql(app: &AppHandle, sql: &str) -> Result<String, String> {
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run mysql: {}", e))?;
+        .map_err(|e| VoltError::Custom(format!("Failed to run mysql: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("MySQL command failed: {}", stderr.trim()));
+        return Err(VoltError::Service(format!("MySQL command failed: {}", stderr.trim())));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), String> {
+pub async fn create_database_inner(app: &AppHandle, name: &str) -> VoltResult<()> {
     let sanitized: String = name
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '_')
         .collect();
     if sanitized.is_empty() {
-        return Err("Invalid database name".to_string());
+        return Err(VoltError::Custom("Invalid database name".to_string()));
     }
     run_mysql(
         app,
@@ -99,18 +97,18 @@ pub async fn create_database_inner(app: &AppHandle, name: &str) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn create_database(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn create_database(app: AppHandle, name: String) -> VoltResult<()> {
     create_database_inner(&app, &name).await
 }
 
 #[tauri::command]
-pub async fn drop_database(app: AppHandle, name: String) -> Result<(), String> {
+pub async fn drop_database(app: AppHandle, name: String) -> VoltResult<()> {
     let sanitized: String = name
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '_')
         .collect();
     if sanitized.is_empty() {
-        return Err("Invalid database name".to_string());
+        return Err(VoltError::Custom("Invalid database name".to_string()));
     }
     run_mysql(&app, &format!("DROP DATABASE IF EXISTS `{}`", sanitized)).await?;
     Ok(())
@@ -122,7 +120,7 @@ pub async fn create_db_user(
     username: String,
     password: String,
     database: String,
-) -> Result<(), String> {
+) -> VoltResult<()> {
     let user_sanitized: String = username
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '_')
@@ -156,7 +154,7 @@ pub async fn create_db_user(
 }
 
 #[tauri::command]
-pub async fn list_databases(app: AppHandle) -> Result<Vec<String>, String> {
+pub async fn list_databases(app: AppHandle) -> VoltResult<Vec<String>> {
     let output = run_mysql(&app, "SHOW DATABASES").await?;
     let databases: Vec<String> = output
         .lines()

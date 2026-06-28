@@ -24,7 +24,6 @@ impl VhostManager {
     ) -> String {
         let mut block = String::new();
 
-        // HTTP Server
         block.push_str(&format!(
             r#"server {{
     listen {};
@@ -54,7 +53,6 @@ impl VhostManager {
 
         block.push_str("}\n");
 
-        // HTTPS Server
         if let Some((cert, key)) = ssl_config {
             block.push_str(&format!(
                 r#"
@@ -109,8 +107,9 @@ server {{
         let content = Self::generate_server_block(domain, root, port, php_port, ssl_paths);
 
         let conf_path = vhosts_dir.join(format!("{}.conf", domain));
-        std::fs::write(&conf_path, &content)
-            .map_err(|e| format!("Failed to write vhost conf: {}", e))?;
+        let tmp_conf = conf_path.with_extension("conf.tmp");
+        std::fs::write(&tmp_conf, &content).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_conf, &conf_path).map_err(|e| e.to_string())?;
 
         let info = VhostInfo {
             domain: domain.to_string(),
@@ -123,8 +122,9 @@ server {{
         let meta_path = vhosts_dir.join(format!("{}.json", domain));
         let meta_json = serde_json::to_string_pretty(&info)
             .map_err(|e| format!("Failed to serialize vhost metadata: {}", e))?;
-        std::fs::write(&meta_path, &meta_json)
-            .map_err(|e| format!("Failed to write vhost metadata: {}", e))?;
+        let tmp_meta = meta_path.with_extension("json.tmp");
+        std::fs::write(&tmp_meta, &meta_json).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_meta, &meta_path).map_err(|e| e.to_string())?;
 
         Ok(info)
     }

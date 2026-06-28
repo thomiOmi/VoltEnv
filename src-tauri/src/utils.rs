@@ -31,3 +31,15 @@ impl Serialize for VoltError {
 }
 
 pub type VoltResult<T> = Result<T, VoltError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_serialization() {
+        let err = VoltError::Service("test error".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Service error: test error\"");
+    }
+}

@@ -27,7 +27,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         let mut preferred = HashMap::new();
-        preferred.insert("nginx".to_string(), 8080);
+        preferred.insert("nginx".to_string(), 80); // Default to 80 for production-like feel
         preferred.insert("php".to_string(), 9000);
         preferred.insert("mysql".to_string(), 3306);
 
@@ -73,12 +73,24 @@ impl Settings {
     pub fn save(&self, app: &AppHandle) -> Result<(), String> {
         let path = Self::path(app);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create config dir: {}", e))?;
+            let _ = std::fs::create_dir_all(parent);
         }
-        let content = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-        std::fs::write(&path, &content).map_err(|e| format!("Failed to write settings: {}", e))?;
+        let content = match serde_json::to_string_pretty(self) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Failed to serialize settings: {}", e)),
+        };
+
+        // Atomic-ish write using temp file
+        let tmp_path = path.with_extension("json.tmp");
+        if let Err(e) = std::fs::write(&tmp_path, &content) {
+            return Err(format!("Failed to write settings temp file: {}", e));
+        }
+
+        if let Err(e) = std::fs::rename(&tmp_path, &path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(format!("Failed to finalize settings: {}", e));
+        }
+
         Ok(())
     }
 }

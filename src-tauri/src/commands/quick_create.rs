@@ -5,6 +5,7 @@ use crate::paths::VoltPath;
 use crate::settings::Settings;
 use crate::vhost::VhostManager;
 use crate::vhost::ssl::SslManager;
+use crate::utils::{VoltResult, VoltError};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +22,7 @@ pub async fn quick_create(
     app: AppHandle,
     project_name: String,
     create_database: bool,
-) -> Result<QuickCreateResult, String> {
+) -> VoltResult<QuickCreateResult> {
     let slug: String = project_name
         .chars()
         .map(|c| {
@@ -39,8 +40,7 @@ pub async fn quick_create(
     let project_dir = www_dir.join(&slug_lower);
     let root_path = project_dir.to_string_lossy().to_string();
 
-    std::fs::create_dir_all(&project_dir)
-        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+    std::fs::create_dir_all(&project_dir)?;
 
     let index_php = format!(
         r#"<?php
@@ -50,8 +50,7 @@ phpinfo();
 "#,
         project_name
     );
-    std::fs::write(project_dir.join("index.php"), &index_php)
-        .map_err(|e| format!("Failed to write index.php: {}", e))?;
+    std::fs::write(project_dir.join("index.php"), &index_php)?;
 
     let settings = Settings::load(&app);
     let nginx_port = settings
@@ -59,7 +58,7 @@ phpinfo();
         .get("nginx")
         .copied()
         .or_else(|| settings.preferred_ports.get("nginx").copied())
-        .unwrap_or(80); // Default to 80 for production-like feel
+        .unwrap_or(80);
 
     let php_port = settings
         .resolved_ports
@@ -67,7 +66,6 @@ phpinfo();
         .copied()
         .or_else(|| settings.preferred_ports.get("php").copied());
 
-    // Auto-generate SSL for quick create
     let ssl_dir = VoltPath::ssl_dir(&app);
     let _ = fs::create_dir_all(&ssl_dir);
 
@@ -103,7 +101,7 @@ phpinfo();
         nginx_port,
         php_port,
         ssl_paths.as_ref().map(|(c, k)| (c.as_path(), k.as_path()))
-    )?;
+    ).map_err(VoltError::Custom)?;
 
     let mut created_db = false;
     if create_database {

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
+use crate::utils::{VoltResult, VoltError};
 
 pub struct LogManager;
 
@@ -16,11 +17,9 @@ impl LogManager {
         app: &AppHandle,
         service_id: &str,
         message: &str,
-    ) -> Result<(), String> {
+    ) -> VoltResult<()> {
         let dir = Self::logs_dir(app);
-        if let Err(e) = fs::create_dir_all(&dir).await {
-            return Err(format!("Failed to create log dir: {}", e));
-        }
+        fs::create_dir_all(&dir).await?;
 
         let log_path = dir.join(format!("{}.log", service_id));
 
@@ -36,13 +35,10 @@ impl LogManager {
             .create(true)
             .append(true)
             .open(&log_path)
-            .await
-            .map_err(|e| format!("Failed to open log: {}", e))?;
+            .await?;
 
         let log_line = format!("{}\n", message);
-        file.write_all(log_line.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to write log: {}", e))?;
+        file.write_all(log_line.as_bytes()).await?;
 
         Ok(())
     }
@@ -75,16 +71,14 @@ pub async fn get_service_logs(
     id: &str,
     version: &str,
     lines_count: usize,
-) -> Result<Vec<String>, String> {
+) -> VoltResult<Vec<String>> {
     let log_path = crate::paths::VoltPath::log_path(app, id, version);
 
     if !log_path.exists() {
         return Ok(vec![format!("-- No log entries for {} {} --", id, version)]);
     }
 
-    let content = fs::read_to_string(&log_path)
-        .await
-        .map_err(|e| format!("Failed to read log: {}", e))?;
+    let content = fs::read_to_string(&log_path).await?;
 
     let lines: Vec<String> = content
         .lines()
