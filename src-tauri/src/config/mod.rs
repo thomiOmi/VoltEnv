@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use crate::utils::{VoltResult, VoltError};
 
 pub struct ConfigGenerator;
 
@@ -8,7 +9,7 @@ impl ConfigGenerator {
         template_name: &str,
         vars: &HashMap<String, String>,
         templates_override_dir: Option<&Path>,
-    ) -> Result<String, String> {
+    ) -> VoltResult<String> {
         let template_content = Self::load_template(template_name, templates_override_dir)?;
 
         let mut rendered = template_content;
@@ -24,17 +25,16 @@ impl ConfigGenerator {
         vars: &HashMap<String, String>,
         templates_override_dir: Option<&Path>,
         output_path: &Path,
-    ) -> Result<(), String> {
+    ) -> VoltResult<()> {
         let content = Self::generate(template_name, vars, templates_override_dir)?;
-        std::fs::write(output_path, &content).map_err(|e| format!("Failed to write config: {}", e))
+        std::fs::write(output_path, &content).map_err(VoltError::Io)
     }
 
-    fn load_template(name: &str, override_dir: Option<&Path>) -> Result<String, String> {
+    fn load_template(name: &str, override_dir: Option<&Path>) -> VoltResult<String> {
         if let Some(dir) = override_dir {
             let path = dir.join(name);
             if path.exists() {
-                return std::fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read template '{}': {}", name, e));
+                return std::fs::read_to_string(&path).map_err(VoltError::Io);
             }
         }
 
@@ -42,7 +42,7 @@ impl ConfigGenerator {
             "nginx.conf.tpl" => Ok(include_str!("templates/nginx.conf.tpl").to_string()),
             "php.ini.tpl" => Ok(include_str!("templates/php.ini.tpl").to_string()),
             "my.cnf.tpl" => Ok(include_str!("templates/my.cnf.tpl").to_string()),
-            _ => Err(format!("Unknown template: {}", name)),
+            _ => Err(VoltError::Config(format!("Unknown template: {}", name))),
         }
     }
 }

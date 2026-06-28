@@ -1,5 +1,6 @@
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
+use crate::utils::{VoltResult, VoltError};
 
 pub struct InstallerManager;
 
@@ -9,19 +10,17 @@ impl InstallerManager {
         id: &str,
         bin_dir: &Path,
         archive_path: &Path,
-    ) -> Result<(), String> {
-        let data = tokio::fs::read(archive_path)
-            .await
-            .map_err(|e| format!("Failed to read archive: {}", e))?;
+    ) -> VoltResult<()> {
+        let data = tokio::fs::read(archive_path).await?;
 
-        let format = detect_format(archive_path)?;
+        let format = detect_format(archive_path).map_err(VoltError::Custom)?;
         let extractor = archive::ArchiveExtractor::new()
             .with_max_file_size(100 * 1024 * 1024)
             .with_max_total_size(500 * 1024 * 1024);
 
         let files = extractor
             .extract(&data, format)
-            .map_err(|e| format!("Extraction failed: {}", e))?;
+            .map_err(|e| VoltError::Custom(format!("Extraction failed: {}", e)))?;
 
         let common_root = detect_common_root(&files);
 
@@ -47,7 +46,7 @@ impl InstallerManager {
                 let target = bin.join(relative);
 
                 if !target.starts_with(&bin) {
-                    return Err::<(), String>(format!("Path traversal: {}", file_path.display()));
+                    return Err(VoltError::Custom(format!("Path traversal: {}", file_path.display())));
                 }
 
                 if file.is_directory {
@@ -57,7 +56,7 @@ impl InstallerManager {
                         let _ = std::fs::create_dir_all(parent);
                     }
                     if let Err(e) = std::fs::write(&target, &file.data) {
-                        return Err(format!("Failed to write {}: {}", target.display(), e));
+                        return Err(VoltError::Custom(format!("Failed to write {}: {}", target.display(), e)));
                     }
                 }
 
@@ -70,10 +69,7 @@ impl InstallerManager {
             Ok(())
         })
         .await
-        .map_err(|e| format!("Extraction task panicked: {}", e))?
-        .inspect_err(|_e| {
-            let _ = std::fs::remove_dir_all(&bin_rollback);
-        })?;
+        .map_err(|e| VoltError::Custom(format!("Extraction task panicked: {}", e)))??;
 
         let _ = tokio::fs::remove_file(archive_path).await;
 

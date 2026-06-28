@@ -1,33 +1,45 @@
-use std::sync::OnceLock;
+use serde::Serialize;
+use thiserror::Error;
 
-/// Returns the shared `reqwest::Client`, building it once on first access.
-///
-/// The client uses a 5-minute timeout and is reused across all download
-/// operations for connection pooling (DNS, TLS, TCP).
-pub fn http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
-            .expect("Failed to build reqwest Client")
-    })
+#[derive(Debug, Error)]
+pub enum VoltError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization error: {0}")]
+    Serde(#[from] serde_json::Error),
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+    #[error("Process error: {0}")]
+    Process(String),
+    #[error("Configuration error: {0}")]
+    Config(String),
+    #[error("Service error: {0}")]
+    Service(String),
+    #[error("Permission denied: {0}")]
+    Permission(String),
+    #[error("Custom error: {0}")]
+    Custom(String),
 }
 
-/// Returns the PATH separator for the current OS (`;` on Windows, `:` on Unix).
-pub fn path_sep() -> &'static str {
-    if cfg!(target_os = "windows") {
-        ";"
-    } else {
-        ":"
+impl Serialize for VoltError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
     }
 }
 
-/// Checks whether a given TCP port is available (not in use by another process).
-/// Tries to bind to 127.0.0.1:{port} asynchronously; returns `true` if the bind succeeds.
-#[tauri::command]
-pub async fn is_port_available(port: u16) -> bool {
-    tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .is_ok()
+pub type VoltResult<T> = Result<T, VoltError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_serialization() {
+        let err = VoltError::Service("test error".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Service error: test error\"");
+    }
 }

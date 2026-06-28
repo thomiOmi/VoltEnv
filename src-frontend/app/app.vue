@@ -2,6 +2,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const colorMode = useColorMode()
+const router = useRouter()
 
 const color = computed(() => colorMode.value === 'dark' ? '#0f172a' : 'white')
 
@@ -41,6 +42,12 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
+  // Check onboarding status
+  const onboarded = localStorage.getItem('voltenv_onboarded')
+  if (!onboarded) {
+    router.push('/onboarding')
+  }
+
   await servicesStore.init()
   await logManager.startListening()
 

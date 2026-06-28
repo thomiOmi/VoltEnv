@@ -1,6 +1,8 @@
+pub mod php_ini;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use crate::utils::{VoltResult, VoltError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,5 +193,48 @@ impl ServiceRegistry {
 impl Default for ServiceRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_service_definition_merge() {
+        let mut base = ServiceDefinition {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            kind: "test".to_string(),
+            default_version: "1.0.0".to_string(),
+            versions: HashMap::new(),
+            binary_name: "test.exe".to_string(),
+            start_args: vec![],
+            stop_args: vec![],
+            port: 80,
+            config_template_name: None,
+            health_check: None,
+            post_install_commands: vec![],
+        };
+
+        let other = ServiceDefinition {
+            id: "test".to_string(),
+            name: "Updated".to_string(),
+            kind: "test".to_string(),
+            default_version: "2.0.0".to_string(),
+            versions: HashMap::new(),
+            binary_name: "test2.exe".to_string(),
+            start_args: vec![],
+            stop_args: vec![],
+            port: 8080,
+            config_template_name: Some("test.conf".to_string()),
+            health_check: None,
+            post_install_commands: vec![],
+        };
+
+        base.merge_from(other);
+        assert_eq!(base.name, "Updated");
+        assert_eq!(base.default_version, "2.0.0");
+        assert_eq!(base.port, 8080);
     }
 }

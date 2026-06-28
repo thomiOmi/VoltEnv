@@ -3,4 +3,5 @@ export interface VhostInfo {
   root: string
   port: number
   phpPort: number | null
+  ssl: boolean
 }
