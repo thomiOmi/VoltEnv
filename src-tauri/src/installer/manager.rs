@@ -28,7 +28,7 @@ impl InstallerManager {
         let app_clone = app.clone();
         let id_owned = id.to_string();
         let bin = bin_dir.to_path_buf();
-        let bin_rollback = bin.clone();
+        let _bin_rollback = bin.clone();
 
         tokio::task::spawn_blocking(move || {
             for (i, file) in files.iter().enumerate() {

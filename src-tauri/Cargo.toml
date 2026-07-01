@@ -21,14 +21,11 @@ reqwest = { version = "0.12", features = ["stream"] }
 futures-util = "0.3"
 sha2 = "0.10"
 chrono = { version = "0.4", features = ["now"] }
-winreg = "0.52"
-windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
-junction = "1.2"
 notify = "7"
 archive = "0.3"
 tera = "1"
 uuid = { version = "1", features = ["v4"] }
-rcgen = "0.13"
+rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
 rustls = "0.23"
 
 log = "0.4"
@@ -40,6 +37,11 @@ tauri-plugin-log = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+junction = "1.2"
 
 [features]
 default = ["custom-protocol"]
