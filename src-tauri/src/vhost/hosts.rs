@@ -25,7 +25,7 @@ impl HostsManager {
         let new_line = format!("\n127.0.0.1 {}\n", domain);
         fs::write(&path, content + &new_line).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
-                format!("Permission denied. Please run with administrator/sudo privileges to update hosts file.")
+                "Permission denied. Please run with administrator/sudo privileges to update hosts file.".to_string()
             } else {
                 e.to_string()
             }
