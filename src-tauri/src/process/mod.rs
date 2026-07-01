@@ -1,10 +1,10 @@
 pub mod platform;
 
+use crate::utils::{VoltError, VoltResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::Mutex;
-use crate::utils::{VoltResult, VoltError};
 
 #[derive(Clone, Debug)]
 pub struct InstanceState {
@@ -30,7 +30,9 @@ impl ServiceProcesses {
     }
 
     async fn is_port_available(port: u16) -> bool {
-        tokio::net::TcpListener::bind(("127.0.0.1", port)).await.is_ok()
+        tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .is_ok()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -45,7 +47,10 @@ impl ServiceProcesses {
         port: u16,
     ) -> VoltResult<u32> {
         if !Self::is_port_available(port).await {
-            return Err(VoltError::Service(format!("Port {} is already in use", port)));
+            return Err(VoltError::Service(format!(
+                "Port {} is already in use",
+                port
+            )));
         }
 
         let mut cmd = tokio::process::Command::new(bin_path);
@@ -61,8 +66,12 @@ impl ServiceProcesses {
             format!("{}{}{}", bin_dir.display(), crate::path_sep(), current_path),
         );
 
-        let mut child = cmd.spawn().map_err(|e| VoltError::Process(format!("Failed to spawn {}: {}", id, e)))?;
-        let pid = child.id().ok_or_else(|| VoltError::Process("Failed to get PID".to_string()))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| VoltError::Process(format!("Failed to spawn {}: {}", id, e)))?;
+        let pid = child
+            .id()
+            .ok_or_else(|| VoltError::Process("Failed to get PID".to_string()))?;
 
         let key = format!("{}:{}", id, version);
 
@@ -145,19 +154,24 @@ impl ServiceProcesses {
 
             if should_restart {
                 if let Some(meta) = metadata {
-                    eprintln!("[voltenv] Service {} crashed. Attempting restart {}/3...", exit_id, meta.restart_count);
+                    eprintln!(
+                        "[voltenv] Service {} crashed. Attempting restart {}/3...",
+                        exit_id, meta.restart_count
+                    );
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
                     let state = app_exit.state::<ServiceProcesses>();
-                    let _ = state.start(
-                        &app_exit,
-                        &exit_id,
-                        &exit_ver,
-                        &meta.bin_path,
-                        &meta.cwd,
-                        &meta.args,
-                        meta.port
-                    ).await;
+                    let _ = state
+                        .start(
+                            &app_exit,
+                            &exit_id,
+                            &exit_ver,
+                            &meta.bin_path,
+                            &meta.cwd,
+                            &meta.args,
+                            meta.port,
+                        )
+                        .await;
                     return;
                 }
             }

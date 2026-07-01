@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use tauri::{AppHandle, State, Manager};
 use crate::paths::VoltPath;
-use crate::settings::Settings;
 use crate::service::ServiceDefinition;
-use crate::utils::{VoltResult, VoltError};
+use crate::settings::Settings;
+use crate::utils::{VoltError, VoltResult};
+use std::collections::HashMap;
+use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
 pub async fn get_settings(app: AppHandle) -> VoltResult<Settings> {
@@ -16,20 +16,32 @@ pub async fn update_settings(app: AppHandle, settings: Settings) -> VoltResult<(
 }
 
 #[tauri::command]
-pub async fn get_service_logs(app: AppHandle, id: String, version: String, lines_count: usize) -> VoltResult<Vec<String>> {
+pub async fn get_service_logs(
+    app: AppHandle,
+    id: String,
+    version: String,
+    lines_count: usize,
+) -> VoltResult<Vec<String>> {
     let log_path = VoltPath::log_path(&app, &id, &version);
     if !log_path.exists() {
         return Ok(vec![]);
     }
 
     let content = std::fs::read_to_string(&log_path)?;
-    let lines: Vec<String> = content.lines().rev().take(lines_count).map(|s| s.to_string()).collect();
+    let lines: Vec<String> = content
+        .lines()
+        .rev()
+        .take(lines_count)
+        .map(|s| s.to_string())
+        .collect();
     Ok(lines.into_iter().rev().collect())
 }
 
 #[tauri::command]
 pub async fn is_port_available(port: u16) -> bool {
-    tokio::net::TcpListener::bind(("127.0.0.1", port)).await.is_ok()
+    tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .is_ok()
 }
 
 #[tauri::command]
@@ -53,13 +65,23 @@ pub async fn delete_custom_service(app: AppHandle, id: String) -> VoltResult<()>
 }
 
 #[tauri::command]
-pub async fn run_composer_command(app: AppHandle, project_path: String, args: Vec<String>) -> VoltResult<String> {
+pub async fn run_composer_command(
+    app: AppHandle,
+    project_path: String,
+    args: Vec<String>,
+) -> VoltResult<String> {
     let settings = Settings::load(&app);
-    let php_version = settings.active_versions.get("php").cloned().unwrap_or_else(|| "8.2.0".to_string());
+    let php_version = settings
+        .active_versions
+        .get("php")
+        .cloned()
+        .unwrap_or_else(|| "8.2.0".to_string());
     let php_bin = VoltPath::service_binary_path(&app, "php", &php_version);
 
     if !php_bin.exists() {
-        return Err(VoltError::Service("PHP is not installed or not found. Please setup PHP first.".to_string()));
+        return Err(VoltError::Service(
+            "PHP is not installed or not found. Please setup PHP first.".to_string(),
+        ));
     }
 
     let composer_path = std::path::Path::new(&project_path).join("composer.phar");
@@ -82,7 +104,10 @@ pub async fn run_composer_command(app: AppHandle, project_path: String, args: Ve
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        return Err(VoltError::Custom(format!("Composer failed: {}\n{}", stderr, stdout)));
+        return Err(VoltError::Custom(format!(
+            "Composer failed: {}\n{}",
+            stderr, stdout
+        )));
     }
 
     Ok(stdout)
@@ -100,7 +125,10 @@ pub async fn run_self_diagnostic(app: AppHandle) -> VoltResult<serde_json::Value
     let ports = vec![80, 443, 3306, 9000];
     let mut port_results = HashMap::new();
     for port in ports {
-        port_results.insert(port.to_string(), serde_json::json!(is_port_available(port).await));
+        port_results.insert(
+            port.to_string(),
+            serde_json::json!(is_port_available(port).await),
+        );
     }
     results.insert("ports", serde_json::json!(port_results));
 

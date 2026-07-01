@@ -10,7 +10,7 @@ use crate::paths::VoltPath;
 use crate::process::ServiceProcesses;
 use crate::service::ServiceRegistry;
 use crate::settings::Settings;
-use crate::utils::{VoltResult, VoltError};
+use crate::utils::{VoltError, VoltResult};
 
 #[tauri::command]
 pub async fn setup_service(app: AppHandle, id: String, version: String) -> VoltResult<()> {
@@ -19,10 +19,9 @@ pub async fn setup_service(app: AppHandle, id: String, version: String) -> VoltR
         .get(&id)
         .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
 
-    let version_info = def
-        .versions
-        .get(&version)
-        .ok_or_else(|| VoltError::Service(format!("Version '{}' not found for '{}'", version, id)))?;
+    let version_info = def.versions.get(&version).ok_or_else(|| {
+        VoltError::Service(format!("Version '{}' not found for '{}'", version, id))
+    })?;
 
     let bin_dir = VoltPath::service_dir(&app, &id, &version);
     let binary_path = bin_dir.join(&def.binary_name);
@@ -37,7 +36,10 @@ pub async fn setup_service(app: AppHandle, id: String, version: String) -> VoltR
     }
 
     if version_info.download_url.is_empty() {
-        return Err(VoltError::Service(format!("No download URL for {} {}", id, version)));
+        return Err(VoltError::Service(format!(
+            "No download URL for {} {}",
+            id, version
+        )));
     }
 
     let temp_path =
@@ -90,7 +92,10 @@ pub async fn start_service(
 
     let key = format!("{}:{}", id, version);
     if state.instances.lock().await.contains_key(&key) {
-        return Err(VoltError::Service(format!("{} {} is already running", id, version)));
+        return Err(VoltError::Service(format!(
+            "{} {} is already running",
+            id, version
+        )));
     }
 
     let bin_dir = VoltPath::service_dir(&app, &id, &version);
@@ -120,10 +125,7 @@ pub async fn start_service(
             "data_dir".to_string(),
             data_dir.to_string_lossy().to_string(),
         );
-        vars.insert(
-            "bin_dir".to_string(),
-            bin_dir.to_string_lossy().to_string(),
-        );
+        vars.insert("bin_dir".to_string(), bin_dir.to_string_lossy().to_string());
         vars.insert(
             "www_dir".to_string(),
             VoltPath::www_dir(&app).to_string_lossy().to_string(),
@@ -338,7 +340,10 @@ pub async fn switch_service_version(
         .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
 
     if !def.versions.contains_key(&version) {
-        return Err(VoltError::Service(format!("Version '{}' not found for '{}'", version, id)));
+        return Err(VoltError::Service(format!(
+            "Version '{}' not found for '{}'",
+            version, id
+        )));
     }
 
     let key = format!("{}:{}", id, version);
@@ -375,13 +380,22 @@ pub async fn switch_service_version(
 }
 
 #[tauri::command]
-pub async fn get_php_extensions(app: AppHandle, version: String) -> VoltResult<Vec<(String, bool)>> {
+pub async fn get_php_extensions(
+    app: AppHandle,
+    version: String,
+) -> VoltResult<Vec<(String, bool)>> {
     let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
     crate::service::php_ini::PhpIniManager::get_extensions(&config_path).map_err(VoltError::Custom)
 }
 
 #[tauri::command]
-pub async fn toggle_php_extension(app: AppHandle, version: String, extension: String, enable: bool) -> VoltResult<()> {
+pub async fn toggle_php_extension(
+    app: AppHandle,
+    version: String,
+    extension: String,
+    enable: bool,
+) -> VoltResult<()> {
     let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
-    crate::service::php_ini::PhpIniManager::toggle_extension(&config_path, &extension, enable).map_err(VoltError::Custom)
+    crate::service::php_ini::PhpIniManager::toggle_extension(&config_path, &extension, enable)
+        .map_err(VoltError::Custom)
 }

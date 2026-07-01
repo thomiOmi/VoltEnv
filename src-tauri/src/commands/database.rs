@@ -3,7 +3,7 @@ use tauri::AppHandle;
 
 use crate::paths::VoltPath;
 use crate::settings::Settings;
-use crate::utils::{VoltResult, VoltError};
+use crate::utils::{VoltError, VoltResult};
 
 fn find_mysql_bin(app: &AppHandle) -> Option<PathBuf> {
     let settings = Settings::load(app);
@@ -50,8 +50,9 @@ fn get_mysql_port(app: &AppHandle) -> u16 {
 }
 
 async fn run_mysql(app: &AppHandle, sql: &str) -> VoltResult<String> {
-    let mysql_bin = find_mysql_bin(app)
-        .ok_or_else(|| VoltError::Service("MySQL CLI not found. Is MySQL installed?".to_string()))?;
+    let mysql_bin = find_mysql_bin(app).ok_or_else(|| {
+        VoltError::Service("MySQL CLI not found. Is MySQL installed?".to_string())
+    })?;
 
     let port = get_mysql_port(app);
 
@@ -74,7 +75,10 @@ async fn run_mysql(app: &AppHandle, sql: &str) -> VoltResult<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(VoltError::Service(format!("MySQL command failed: {}", stderr.trim())));
+        return Err(VoltError::Service(format!(
+            "MySQL command failed: {}",
+            stderr.trim()
+        )));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())

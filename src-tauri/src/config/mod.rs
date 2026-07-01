@@ -1,6 +1,6 @@
+use crate::utils::{VoltError, VoltResult};
 use std::collections::HashMap;
 use std::path::Path;
-use crate::utils::{VoltResult, VoltError};
 
 pub struct ConfigGenerator;
 

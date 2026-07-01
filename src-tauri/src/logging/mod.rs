@@ -1,10 +1,10 @@
 pub mod system;
 
+use crate::utils::{VoltError, VoltResult};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
-use crate::utils::{VoltResult, VoltError};
 
 pub struct LogManager;
 
