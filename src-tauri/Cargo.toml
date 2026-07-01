@@ -3,7 +3,7 @@ name = "voltenv"
 version = "0.1.0"
 description = "Lightweight local development environment manager"
 authors = ["VoltEnv Team"]
-edition = "2021"
+edition = "2024"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -40,6 +40,7 @@ tauri-plugin-log = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+glib = "0.22.8"
 
 [features]
 default = ["custom-protocol"]
