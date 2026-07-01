@@ -35,7 +35,7 @@ impl VhostManager {
         try_files $uri $uri/ =404;
     }}
 "#,
-            port, domain, root.replace("\", "/")
+            port, domain, root.replace("\\", "/")
         ));
 
         if let Some(php) = php_port {
@@ -70,9 +70,9 @@ server {{
     }}
 "#,
                 domain,
-                root.replace("\", "/"),
-                cert.to_string_lossy().replace("\", "/"),
-                key.to_string_lossy().replace("\", "/")
+                root.replace("\\", "/"),
+                cert.to_string_lossy().replace("\\", "/"),
+                key.to_string_lossy().replace("\\", "/")
             ));
 
             if let Some(php) = php_port {
@@ -158,7 +158,7 @@ server {{
 
         for entry in entries {
             let path = entry.path();
-            if path.extension().is_none_or(|e| e != "json") {
+            if path.extension().map_or(true, |e| e != "json") {
                 continue;
             }
 
