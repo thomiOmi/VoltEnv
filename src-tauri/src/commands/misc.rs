@@ -3,7 +3,7 @@ use crate::service::ServiceDefinition;
 use crate::settings::Settings;
 use crate::utils::{VoltError, VoltResult};
 use std::collections::HashMap;
-use tauri::{AppHandle, Manager, State};
+use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn get_settings(app: AppHandle) -> VoltResult<Settings> {

@@ -1,6 +1,6 @@
 pub mod system;
 
-use crate::utils::{VoltError, VoltResult};
+use crate::utils::VoltResult;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tokio::fs::{self, OpenOptions};

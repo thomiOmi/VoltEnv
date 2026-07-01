@@ -1,10 +1,17 @@
 use std::fs;
 use std::path::Path;
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhpExtension {
+    pub name: String,
+    pub enabled: bool,
+}
 
 pub struct PhpIniManager;
 
 impl PhpIniManager {
-    pub fn get_extensions(ini_path: &Path) -> Result<Vec<(String, bool)>, String> {
+    pub fn get_extensions(ini_path: &Path) -> Result<Vec<PhpExtension>, String> {
         if !ini_path.exists() {
             return Ok(vec![]);
         }
@@ -21,7 +28,10 @@ impl PhpIniManager {
                 if parts.len() >= 2 {
                     let name = parts[1].trim();
                     if !name.is_empty() {
-                        extensions.push((name.to_string(), is_enabled));
+                        extensions.push(PhpExtension {
+                            name: name.to_string(),
+                            enabled: is_enabled,
+                        });
                     }
                 }
             }
@@ -37,7 +47,6 @@ impl PhpIniManager {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            // Match exactly "extension=name" or "zend_extension=name" regardless of comment
             let clean_line = trimmed.trim_start_matches(';');
             if clean_line.contains(&format!("extension={}", extension))
                 || clean_line.contains(&format!("zend_extension={}", extension))

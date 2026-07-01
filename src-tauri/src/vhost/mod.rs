@@ -160,7 +160,7 @@ server {{
 
         for entry in entries {
             let path = entry.path();
-            if path.extension().map_or(true, |e| e != "json") {
+            if path.extension().is_none_or(|e| e != "json") {
                 continue;
             }
 

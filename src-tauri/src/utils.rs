@@ -21,6 +21,12 @@ pub enum VoltError {
     Custom(String),
 }
 
+impl From<String> for VoltError {
+    fn from(s: String) -> Self {
+        VoltError::Custom(s)
+    }
+}
+
 impl Serialize for VoltError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

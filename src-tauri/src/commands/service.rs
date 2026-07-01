@@ -1,73 +1,85 @@
-use std::collections::HashMap;
-use std::path::Path;
-use tauri::{AppHandle, Emitter, State};
-
-use crate::config::ConfigGenerator;
-use crate::download::manager::DownloadManager;
-use crate::download::verifier::Verifier;
-use crate::installer::manager::InstallerManager;
-use crate::paths::VoltPath;
-use crate::process::ServiceProcesses;
 use crate::service::ServiceRegistry;
-use crate::settings::Settings;
+use crate::process::ServiceProcesses;
+use crate::paths::VoltPath;
 use crate::utils::{VoltError, VoltResult};
+use crate::config::ConfigGenerator;
+use std::collections::HashMap;
+use tauri::{AppHandle, State};
+
+fn substitute_args(
+    arg: &str,
+    root: &std::path::Path,
+    bin_dir: &std::path::Path,
+    config: &std::path::Path,
+    data: &std::path::Path,
+    port: u16,
+) -> String {
+    arg.replace("{root}", &root.to_string_lossy())
+        .replace("{bin_dir}", &bin_dir.to_string_lossy())
+        .replace("{config}", &config.to_string_lossy())
+        .replace("{data_dir}", &data.to_string_lossy())
+        .replace("{port}", &port.to_string())
+}
+
+async fn resolve_port(app: &AppHandle, id: &str, default: u16) -> u16 {
+    let settings = crate::commands::misc::get_settings(app.clone()).await.unwrap_or_default();
+    settings.preferred_ports.get(id).copied().unwrap_or(default)
+}
+
+async fn health_check(
+    hc: &crate::service::HealthCheckConfig,
+    port: u16,
+    _def: &crate::service::ServiceDefinition,
+    _root: &std::path::Path,
+    _bin: &std::path::Path,
+    _config: &std::path::Path,
+    _data: &std::path::Path,
+) -> Result<(), String> {
+    match hc.check_type.as_str() {
+        "tcp" => {
+            let addr = format!("127.0.0.1:{}", port);
+            let mut attempts = 0;
+            while attempts < 10 {
+                if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+                    return Ok(());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                attempts += 1;
+            }
+            Err(format!("TCP Health check failed on {}", addr))
+        }
+        "http" => {
+            let path = hc.command.as_deref().unwrap_or("/");
+            let url = format!("http://127.0.0.1:{}{}", port, path);
+            let mut attempts = 0;
+            while attempts < 10 {
+                if let Ok(resp) = crate::http_client().get(&url).send().await {
+                    if resp.status().is_success() {
+                        return Ok(());
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                attempts += 1;
+            }
+            Err(format!("HTTP Health check failed on {}", url))
+        }
+        _ => Ok(()),
+    }
+}
 
 #[tauri::command]
-pub async fn setup_service(app: AppHandle, id: String, version: String) -> VoltResult<()> {
+pub async fn setup_service(
+    app: AppHandle,
+    id: String,
+    version: String,
+) -> VoltResult<()> {
     let registry = ServiceRegistry::load_all(&app);
-    let def = registry
-        .get(&id)
-        .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
+    let def = registry.get(&id).ok_or_else(|| VoltError::Service("Service not found".to_string()))?;
 
-    let version_info = def.versions.get(&version).ok_or_else(|| {
-        VoltError::Service(format!("Version '{}' not found for '{}'", version, id))
-    })?;
-
-    let bin_dir = VoltPath::service_dir(&app, &id, &version);
-    let binary_path = bin_dir.join(&def.binary_name);
-
-    if binary_path.exists() {
-        app.emit(
-            "service-status-changed",
-            serde_json::json!({ "id": id, "status": "installed", "version": version }),
-        )
-        .ok();
-        return Ok(());
-    }
-
-    if version_info.download_url.is_empty() {
-        return Err(VoltError::Service(format!(
-            "No download URL for {} {}",
-            id, version
-        )));
-    }
-
-    let temp_path =
-        VoltPath::temporary_download_path(&app, &id, &version, &version_info.download_url);
-
-    DownloadManager::download(&app, &id, &version_info.download_url, &temp_path).await?;
-
-    if let Some(ref sha256) = version_info.sha256 {
-        Verifier::sha256(&temp_path, sha256).await?;
-    }
-
-    InstallerManager::install(&app, &id, &bin_dir, &temp_path).await?;
-
-    let root = VoltPath::root(&app);
-    let config_path = VoltPath::config_path(&app, &id, &version);
-    let data_dir = VoltPath::data_dir(&app, &id, &version);
-
-    for cmd_str in &def.post_install_commands {
-        let substituted =
-            substitute_args(cmd_str, &root, &bin_dir, &config_path, &data_dir, def.port);
-        run_command(&substituted).await?;
-    }
-
-    app.emit(
-        "service-status-changed",
-        serde_json::json!({ "id": id, "status": "installed", "version": version }),
-    )
-    .ok();
+    crate::download::manager::DownloadManager::new(&app)
+        .download_and_install(def, &version)
+        .await
+        .map_err(|e| VoltError::Custom(e.to_string()))?;
 
     Ok(())
 }
@@ -77,26 +89,10 @@ pub async fn start_service(
     app: AppHandle,
     state: State<'_, ServiceProcesses>,
     id: String,
+    version: String,
 ) -> VoltResult<u32> {
     let registry = ServiceRegistry::load_all(&app);
-    let def = registry
-        .get(&id)
-        .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
-
-    let settings = Settings::load(&app);
-    let version = settings
-        .active_versions
-        .get(&id)
-        .cloned()
-        .unwrap_or(def.default_version.clone());
-
-    let key = format!("{}:{}", id, version);
-    if state.instances.lock().await.contains_key(&key) {
-        return Err(VoltError::Service(format!(
-            "{} {} is already running",
-            id, version
-        )));
-    }
+    let def = registry.get(&id).ok_or_else(|| VoltError::Service("Service not found".to_string()))?;
 
     let bin_dir = VoltPath::service_dir(&app, &id, &version);
     let binary_path = bin_dir.join(&def.binary_name);
@@ -132,7 +128,7 @@ pub async fn start_service(
         );
         let templates_dir = VoltPath::templates_dir(&app);
         ConfigGenerator::generate_to_file(tmpl, &vars, Some(&templates_dir), &config_path)
-            .map_err(VoltError::Custom)?;
+            .map_err(|e| VoltError::Custom(e.to_string()))?;
     }
 
     let root = VoltPath::root(&app);
@@ -149,182 +145,49 @@ pub async fn start_service(
 
     let pid = state
         .start(
-            &app,
-            &id,
-            &version,
-            &binary_path.to_string_lossy(),
-            &cwd,
-            &substituted_args,
+            app.clone(),
+            id.clone(),
+            version.clone(),
+            binary_path.to_string_lossy().to_string(),
+            cwd.clone(),
+            substituted_args.clone(),
             port,
         )
         .await
-        .map_err(VoltError::Process)?;
+        .map_err(|e| VoltError::Process(e.to_string()))?;
 
     if let Some(ref hc) = def.health_check {
         let result = health_check(hc, port, def, &root, &bin_dir, &config_path, &data_dir).await;
         if let Err(e) = result {
-            let _ = state.stop_all_by_id(&id).await;
-            return Err(e);
+            let _ = state.stop(&id, &version).await;
+            return Err(VoltError::Service(format!("Health check failed: {}", e)));
         }
     }
-
-    app.emit(
-        "service-status-changed",
-        serde_json::json!({ "id": id, "status": "running", "version": version, "port": port }),
-    )
-    .ok();
 
     Ok(pid)
 }
 
 #[tauri::command]
-pub async fn stop_service(state: State<'_, ServiceProcesses>, id: String) -> VoltResult<()> {
-    state.stop_all_by_id(&id).await.map_err(VoltError::Process)
-}
-
-async fn resolve_port(app: &AppHandle, id: &str, preferred: u16) -> u16 {
-    let settings = Settings::load(app);
-    if let Some(resolved) = settings.resolved_ports.get(id) {
-        if is_port_free(*resolved).await {
-            return *resolved;
-        }
-    }
-    for port in preferred..preferred.saturating_add(100) {
-        if is_port_free(port).await {
-            let mut new_settings = Settings::load(app);
-            new_settings.resolved_ports.insert(id.to_string(), port);
-            let _ = new_settings.save(app);
-            return port;
-        }
-    }
-    preferred
-}
-
-async fn is_port_free(port: u16) -> bool {
-    tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .is_ok()
-}
-
-async fn health_check(
-    hc: &crate::service::HealthCheckConfig,
-    port: u16,
-    _def: &crate::service::ServiceDefinition,
-    root: &Path,
-    bin_dir: &Path,
-    config_path: &Path,
-    data_dir: &Path,
+pub async fn stop_service(
+    state: State<'_, ServiceProcesses>,
+    id: String,
+    version: String,
 ) -> VoltResult<()> {
-    match hc.check_type.as_str() {
-        "port" => {
-            let deadline =
-                tokio::time::Instant::now() + std::time::Duration::from_millis(hc.timeout_ms);
-            while tokio::time::Instant::now() < deadline {
-                if !is_port_free(port).await {
-                    return Ok(());
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
-            Err(VoltError::Service(format!(
-                "Port {} not listening within {} ms",
-                port, hc.timeout_ms
-            )))
-        }
-        "command" => {
-            if let Some(ref cmd) = hc.command {
-                let substituted = substitute_args(cmd, root, bin_dir, config_path, data_dir, port);
-                run_command(&substituted).await
-            } else {
-                Ok(())
-            }
-        }
-        _ => Ok(()),
-    }
-}
-
-fn substitute_args(
-    cmd: &str,
-    root: &Path,
-    bin_dir: &Path,
-    config_path: &Path,
-    data_dir: &Path,
-    port: u16,
-) -> String {
-    cmd.replace("{{root}}", &root.to_string_lossy())
-        .replace("{{bin_dir}}", &bin_dir.to_string_lossy())
-        .replace("{{config_path}}", &config_path.to_string_lossy())
-        .replace("{{data_dir}}", &data_dir.to_string_lossy())
-        .replace("{{port}}", &port.to_string())
-}
-
-async fn run_command(cmd_str: &str) -> VoltResult<()> {
-    let status = if cfg!(target_os = "windows") {
-        tokio::process::Command::new("cmd")
-            .args(["/C", cmd_str])
-            .status()
-            .await?
-    } else {
-        tokio::process::Command::new("sh")
-            .args(["-c", cmd_str])
-            .status()
-            .await?
-    };
-
-    if !status.success() {
-        return Err(VoltError::Custom(format!(
-            "Command failed with exit code: {:?}",
-            status.code()
-        )));
-    }
-
-    Ok(())
+    state.stop(&id, &version).await
 }
 
 #[tauri::command]
 pub async fn get_service_status(
-    app: AppHandle,
     state: State<'_, ServiceProcesses>,
     id: String,
-) -> VoltResult<serde_json::Value> {
-    let registry = ServiceRegistry::load_all(&app);
-    let def = registry
-        .get(&id)
-        .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
-    let settings = Settings::load(&app);
-    let version = settings
-        .active_versions
-        .get(&id)
-        .cloned()
-        .unwrap_or(def.default_version.clone());
-    let key = format!("{}:{}", id, version);
-
-    let instances = state.instances.lock().await;
-    if let Some(instance) = instances.get(&key) {
-        Ok(serde_json::json!({
-            "id": id,
-            "version": instance.version,
-            "status": "running",
-            "port": instance.port,
-        }))
-    } else {
-        Ok(serde_json::json!({
-            "id": id,
-            "version": version,
-            "status": "stopped",
-            "port": 0,
-        }))
-    }
+    version: String,
+) -> VoltResult<String> {
+    Ok(state.get_status(&id, &version).await)
 }
 
 #[tauri::command]
-pub async fn get_services(app: AppHandle) -> VoltResult<Vec<serde_json::Value>> {
-    let registry = crate::service::ServiceRegistry::load_all(&app);
-    let services: Vec<serde_json::Value> = registry
-        .all()
-        .into_iter()
-        .map(|s| serde_json::to_value(s).unwrap_or_default())
-        .collect();
-    Ok(services)
+pub async fn get_services(app: AppHandle) -> VoltResult<Vec<crate::service::ServiceDefinition>> {
+    Ok(ServiceRegistry::load_all(&app).all().into_iter().cloned().collect())
 }
 
 #[tauri::command]
@@ -334,58 +197,24 @@ pub async fn switch_service_version(
     id: String,
     version: String,
 ) -> VoltResult<()> {
-    let registry = ServiceRegistry::load_all(&app);
-    let def = registry
-        .get(&id)
-        .ok_or_else(|| VoltError::Service(format!("Service '{}' not found", id)))?;
+    let _ = state.stop_all_by_id(&id).await.map_err(|e| VoltError::Process(e.to_string()));
 
-    if !def.versions.contains_key(&version) {
-        return Err(VoltError::Service(format!(
-            "Version '{}' not found for '{}'",
-            version, id
-        )));
-    }
+    VoltPath::create_env_junction(&app, &id, &version).map_err(|e| VoltError::Custom(e.to_string()))?;
 
-    let key = format!("{}:{}", id, version);
-    if state.instances.lock().await.contains_key(&key) {
-        return Err(VoltError::Service(format!(
-            "Version '{}' of '{}' is currently running. Stop it first.",
-            version, id
-        )));
-    }
-
-    let bin_dir = crate::paths::VoltPath::service_dir(&app, &id, &version);
-    let binary_path = bin_dir.join(&def.binary_name);
-    if !binary_path.exists() {
-        return Err(VoltError::Service(format!(
-            "Version '{}' of '{}' is not installed. Run setup first.",
-            version, id
-        )));
-    }
-
-    crate::paths::VoltPath::create_env_junction(&app, &id, &version).map_err(VoltError::Custom)?;
-
-    let mut settings = crate::settings::Settings::load(&app);
-    settings.resolved_ports.remove(&id);
-    settings.active_versions.insert(id.clone(), version.clone());
-    let _ = settings.save(&app);
-
-    app.emit(
-        "service-status-changed",
-        serde_json::json!({ "id": id, "status": "stopped", "version": version }),
-    )
-    .ok();
+    let mut settings = crate::commands::misc::get_settings(app.clone()).await.unwrap_or_default();
+    settings.active_versions.insert(id, version);
+    settings.save(&app).map_err(|e| VoltError::Custom(e.to_string()))?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_php_extensions(
-    app: AppHandle,
-    version: String,
-) -> VoltResult<Vec<(String, bool)>> {
-    let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
-    crate::service::php_ini::PhpIniManager::get_extensions(&config_path).map_err(VoltError::Custom)
+pub async fn get_php_extensions(app: AppHandle, version: String) -> VoltResult<Vec<crate::service::php_ini::PhpExtension>> {
+    let config_path = VoltPath::config_path(&app, "php", &version);
+    if !config_path.exists() {
+        return Err(VoltError::Config("php.ini not found".to_string()));
+    }
+    crate::service::php_ini::PhpIniManager::get_extensions(&config_path).map_err(|e| VoltError::Custom(e.to_string()))
 }
 
 #[tauri::command]
@@ -393,9 +222,9 @@ pub async fn toggle_php_extension(
     app: AppHandle,
     version: String,
     extension: String,
-    enable: bool,
+    enabled: bool,
 ) -> VoltResult<()> {
-    let config_path = crate::paths::VoltPath::config_path(&app, "php", &version);
-    crate::service::php_ini::PhpIniManager::toggle_extension(&config_path, &extension, enable)
-        .map_err(VoltError::Custom)
+    let config_path = VoltPath::config_path(&app, "php", &version);
+    crate::service::php_ini::PhpIniManager::toggle_extension(&config_path, &extension, enabled)
+        .map_err(|e| VoltError::Custom(e.to_string()))
 }
