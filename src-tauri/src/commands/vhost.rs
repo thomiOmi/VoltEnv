@@ -1,11 +1,11 @@
-use tauri::AppHandle;
 use std::fs;
+use tauri::AppHandle;
 
 use crate::paths::VoltPath;
-use crate::vhost::{VhostInfo, VhostManager};
-use crate::vhost::ssl::SslManager;
+use crate::utils::{VoltError, VoltResult};
 use crate::vhost::hosts::HostsManager;
-use crate::utils::{VoltResult, VoltError};
+use crate::vhost::ssl::SslManager;
+use crate::vhost::{VhostInfo, VhostManager};
 
 #[tauri::command]
 pub async fn list_vhosts(app: AppHandle) -> VoltResult<Vec<VhostInfo>> {
@@ -40,7 +40,8 @@ pub async fn create_vhost(
         let ca_cert = fs::read_to_string(&ca_cert_path)?;
         let ca_key = fs::read_to_string(&ca_key_path)?;
 
-        let (cert, key) = SslManager::generate_cert(&ca_cert, &ca_key, &domain).map_err(VoltError::Custom)?;
+        let (cert, key) =
+            SslManager::generate_cert(&ca_cert, &ca_key, &domain).map_err(VoltError::Custom)?;
         let cert_path = ssl_dir.join(format!("{}.crt", domain));
         let key_path = ssl_dir.join(format!("{}.key", domain));
 
@@ -57,7 +58,8 @@ pub async fn create_vhost(
     };
 
     let ssl_ref = ssl_paths.as_ref().map(|(c, k)| (c.as_path(), k.as_path()));
-    VhostManager::save_vhost(&vhosts_dir, &domain, &root, port, php_port, ssl_ref).map_err(VoltError::Custom)
+    VhostManager::save_vhost(&vhosts_dir, &domain, &root, port, php_port, ssl_ref)
+        .map_err(VoltError::Custom)
 }
 
 #[tauri::command]

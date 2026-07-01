@@ -1,5 +1,5 @@
 use crate::http_client;
-use crate::utils::{VoltResult, VoltError};
+use crate::utils::{VoltError, VoltResult};
 use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -14,10 +14,7 @@ impl DownloadManager {
         url: &str,
         dest_path: &Path,
     ) -> VoltResult<()> {
-        let response = http_client()
-            .get(url)
-            .send()
-            .await?;
+        let response = http_client().get(url).send().await?;
 
         let total_size = response.content_length().unwrap_or(0);
         let part_path = part_path_for(dest_path);

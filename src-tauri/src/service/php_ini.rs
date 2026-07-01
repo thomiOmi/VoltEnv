@@ -39,7 +39,9 @@ impl PhpIniManager {
             let trimmed = line.trim();
             // Match exactly "extension=name" or "zend_extension=name" regardless of comment
             let clean_line = trimmed.trim_start_matches(';');
-            if clean_line.contains(&format!("extension={}", extension)) || clean_line.contains(&format!("zend_extension={}", extension)) {
+            if clean_line.contains(&format!("extension={}", extension))
+                || clean_line.contains(&format!("zend_extension={}", extension))
+            {
                 if enable {
                     new_lines.push(clean_line.to_string());
                 } else {

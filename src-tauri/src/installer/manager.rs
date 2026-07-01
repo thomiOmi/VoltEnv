@@ -1,6 +1,6 @@
+use crate::utils::{VoltError, VoltResult};
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
-use crate::utils::{VoltResult, VoltError};
 
 pub struct InstallerManager;
 
@@ -46,7 +46,10 @@ impl InstallerManager {
                 let target = bin.join(relative);
 
                 if !target.starts_with(&bin) {
-                    return Err(VoltError::Custom(format!("Path traversal: {}", file_path.display())));
+                    return Err(VoltError::Custom(format!(
+                        "Path traversal: {}",
+                        file_path.display()
+                    )));
                 }
 
                 if file.is_directory {
@@ -56,7 +59,11 @@ impl InstallerManager {
                         let _ = std::fs::create_dir_all(parent);
                     }
                     if let Err(e) = std::fs::write(&target, &file.data) {
-                        return Err(VoltError::Custom(format!("Failed to write {}: {}", target.display(), e)));
+                        return Err(VoltError::Custom(format!(
+                            "Failed to write {}: {}",
+                            target.display(),
+                            e
+                        )));
                     }
                 }
 

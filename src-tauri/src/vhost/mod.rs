@@ -1,5 +1,5 @@
-pub mod ssl;
 pub mod hosts;
+pub mod ssl;
 use std::path::Path;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -35,7 +35,9 @@ impl VhostManager {
         try_files $uri $uri/ =404;
     }}
 "#,
-            port, domain, root.replace("\\", "/")
+            port,
+            domain,
+            root.replace("\\", "/")
         ));
 
         if let Some(php) = php_port {

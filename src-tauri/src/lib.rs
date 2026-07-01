@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::OnceLock;
-use tauri::Manager;
 use tauri::Emitter;
+use tauri::Manager;
 
 pub mod commands;
 pub mod config;
@@ -13,9 +13,9 @@ pub mod paths;
 pub mod process;
 pub mod service;
 pub mod settings;
+pub mod utils;
 pub mod vhost;
 pub mod watcher;
-pub mod utils;
 
 pub fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();

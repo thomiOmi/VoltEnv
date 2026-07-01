@@ -1,7 +1,7 @@
+use crate::utils::{VoltError, VoltResult};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use crate::utils::{VoltResult, VoltError};
 
 pub struct Verifier;
 

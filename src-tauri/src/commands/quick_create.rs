@@ -1,11 +1,11 @@
-use tauri::AppHandle;
 use std::fs;
+use tauri::AppHandle;
 
 use crate::paths::VoltPath;
 use crate::settings::Settings;
-use crate::vhost::VhostManager;
+use crate::utils::{VoltError, VoltResult};
 use crate::vhost::ssl::SslManager;
-use crate::utils::{VoltResult, VoltError};
+use crate::vhost::VhostManager;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,8 +100,9 @@ phpinfo();
         &root_path,
         nginx_port,
         php_port,
-        ssl_paths.as_ref().map(|(c, k)| (c.as_path(), k.as_path()))
-    ).map_err(VoltError::Custom)?;
+        ssl_paths.as_ref().map(|(c, k)| (c.as_path(), k.as_path())),
+    )
+    .map_err(VoltError::Custom)?;
 
     let mut created_db = false;
     if create_database {
