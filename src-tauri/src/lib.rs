@@ -34,16 +34,7 @@ pub fn path_sep() -> &'static str {
     }
 }
 
-#[cfg(debug_assertions)]
-fn patch_dev_env() {
-    std::env::set_var("TAURI_DEV", "1");
-    std::env::set_var("TAURI_DEV_URL", "http://localhost:3000");
-}
-
 pub fn run() {
-    #[cfg(debug_assertions)]
-    patch_dev_env();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
